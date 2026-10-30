@@ -286,3 +286,11 @@ tbody tr:hover td { background: color-mix(in srgb, var(--brand-tint) 55%, var(--
 .infopop b { color: var(--ink); }
 .infopop__title { color: var(--ink) !important; font-weight: 700; margin-bottom: 4px; }
 .delay { font-variant-numeric: tabular-nums; white-space: nowrap; cursor: help; }
+
+/* ---------- Action icons ---------- */
+.aicon { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-2); vertical-align: middle; cursor: help; }
+.aicon__cart { color: var(--brand-2); }
+.actionlegend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; margin: 10px 2px 0; font-size: 13px; color: var(--ink-3); }
+.actionlegend__title { font-weight: 600; }
+.actionlegend__item { display: inline-flex; align-items: center; gap: 7px; }
+.actionlegend .aicon { cursor: default; }

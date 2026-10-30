@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ActionIcon, ActionLegend } from '@/components/ActionIcon';
 import { MonthPicker } from '@/components/MonthPicker';
 import { OutcomePill } from '@/components/Pill';
 import { StatTile } from '@/components/StatTile';
@@ -126,13 +127,14 @@ export default async function Generation({ searchParams }: { searchParams: Promi
                       <td><OutcomePill outcome={c.outcome} /></td>
                       <td>{c.http_status ?? '—'}</td>
                       <td>{c.checked_at ? fmtDate(c.checked_at, true) : '—'}</td>
-                      <td>{c.action ? `${c.registrar ?? 'Control'} · ${actionLabel[c.action as Action]}` : <span className="muted">not used</span>}</td>
+                      <td>{c.action ? <>{c.registrar ?? 'Control'} <ActionIcon action={c.action as Action} /></> : <span className="muted">not used</span>}</td>
                       <td>{c.rdap_url ? <a href={c.rdap_url} target="_blank" rel="noreferrer">Verify ↗</a> : ''}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <ActionLegend />
           </section>
 
           <section className="section">

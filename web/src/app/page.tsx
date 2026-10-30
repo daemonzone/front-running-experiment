@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArmBars } from '@/components/ArmBars';
 import { CaseStudy } from '@/components/CaseStudy';
 import { CumulativeChart } from '@/components/CumulativeChart';
+import { ActionIcon, ActionLegend } from '@/components/ActionIcon';
 import { InfoPop } from '@/components/InfoPop';
 import { MonthPicker } from '@/components/MonthPicker';
 import { StatTile } from '@/components/StatTile';
@@ -72,7 +73,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
 
   const hits = await q(
     `SELECT d.name, d.assigned_action AS action, r.name AS registrar, d.searched_at, d.rdap_registrar_name,
-            d.rdap_registrar_iana_id AS iana, d.rdap_created_at, rc.nameservers, rc.last_changed,
+            d.rdap_registrar_iana_id AS iana, d.rdap_created_at, d.registered_detected_at, rc.nameservers, rc.last_changed,
             EXTRACT(EPOCH FROM (COALESCE(d.rdap_created_at, d.registered_detected_at) - d.searched_at)) / 86400 AS days
        FROM domains d LEFT JOIN registrars r ON r.id = d.flagged_registrar_id
        LEFT JOIN LATERAL (
@@ -171,14 +172,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
             <p className="empty">None so far. This table fills in as the registry reports registrations.</p>
           ) : (
             <table>
-              <thead><tr><th>Domain</th><th>Searched on</th><th>Action</th><th>Searched (UTC)</th><th title="days hh:mm, or h:mm under a day">Delay</th><th>Registered via</th></tr></thead>
+              <thead><tr><th>Domain</th><th>Searched on</th><th>Action</th><th>Searched (UTC)</th><th>Registered (UTC)</th><th title="days hh:mm, or h:mm under a day">Delay</th><th>Registered via</th></tr></thead>
               <tbody>
                 {hits.map((h: any) => (
                   <tr key={h.name}>
                     <td><Link href={`/domains/${h.name}`}><b>{h.name}</b></Link></td>
                     <td>{h.registrar ?? 'Control'}</td>
-                    <td>{actionLabel[h.action as Action]}</td>
+                    <td><ActionIcon action={h.action as Action} /></td>
                     <td>{fmtDateTime(h.searched_at)}</td>
+                    <td>{fmtDateTime(h.rdap_created_at ?? h.registered_detected_at)}</td>
                     <td className="delay" title={`registered ${fmtSpan(h.days)}`}>{fmtDelay(h.days)}</td>
                     <td>
                       {h.rdap_registrar_name ?? '—'}
@@ -190,6 +192,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
             </table>
           )}
         </div>
+        {hits.length > 0 && <ActionLegend />}
         {via.length > 0 && (
           <p className="muted via">
             Registrar of record for these names (information only — names are attributed to where they were searched):{' '}

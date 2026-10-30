@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { StatusPill } from '@/components/Pill';
+import { ActionIcon, ActionLegend } from '@/components/ActionIcon';
 import { InfoPop } from '@/components/InfoPop';
 import { MonthPicker } from '@/components/MonthPicker';
 import { q } from '@/lib/db';
 import { cohortFilter, listMonths, monthShort, resolveMonth } from '@/lib/months';
-import { actionLabel, fmtDateTime, fmtDelay, fmtSpan, fmtWhen, type Action } from '@/lib/viz';
+import { fmtDateTime, fmtDelay, fmtSpan, fmtWhen, type Action } from '@/lib/viz';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,13 +74,13 @@ export default async function Domains({ searchParams }: { searchParams: Promise<
       <div className="card card--flush table-wrap">
         {rows.length === 0 ? <p className="empty">No names match these filters.</p> : (
           <table>
-            <thead><tr><th>Domain</th><th>Group</th><th>Action</th><th>Status</th><th>Searched (UTC)</th><th title="days hh:mm, or h:mm under a day">Delay</th><th>Cohort</th></tr></thead>
+            <thead><tr><th>Domain</th><th>Group</th><th>Action</th><th>Status</th><th>Searched (UTC)</th><th>Registered (UTC)</th><th title="days hh:mm, or h:mm under a day">Delay</th><th>Cohort</th></tr></thead>
             <tbody>
               {rows.map((d: any) => (
                 <tr key={d.name}>
                   <td><Link href={`/domains/${d.name}`}><b>{d.name}</b></Link></td>
                   <td>{d.registrar ?? 'Control'}</td>
-                  <td>{actionLabel[d.action as Action]}</td>
+                  <td><ActionIcon action={d.action as Action} /></td>
                   <td>
                     <StatusPill status={d.status} />
                     {d.status === 'registered' && (
@@ -87,6 +88,7 @@ export default async function Domains({ searchParams }: { searchParams: Promise<
                     )}
                   </td>
                   <td>{fmtDateTime(d.searched_at)}</td>
+                  <td>{d.status === 'registered' ? fmtDateTime(d.rdap_created_at) : <span className="muted">—</span>}</td>
                   <td className="delay" title={d.days != null ? `registered ${fmtSpan(d.days)}` : undefined}>{d.days != null ? fmtDelay(d.days) : <span className="muted">—</span>}</td>
                   <td className="muted"><Link href={`/generation?month=${d.cohort}`}>{monthShort(d.cohort)}</Link></td>
                 </tr>
@@ -95,6 +97,7 @@ export default async function Domains({ searchParams }: { searchParams: Promise<
           </table>
         )}
       </div>
+      {rows.length > 0 && <ActionLegend />}
     </>
   );
 }
