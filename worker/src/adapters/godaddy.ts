@@ -4,7 +4,7 @@ export const godaddy = makeCartAdapter({
   typed: {
     homeUrl: 'https://www.godaddy.com/domains',
     input: (page) => page.locator('input:visible[type="search"], input:visible[placeholder*="domain" i], input:visible[placeholder*="search" i], input:visible[name*="domain" i], input:visible[aria-label*="domain" i]'),
-    submit: (page) => page.getByRole('button', { name: /search|check|find/i }),
+    // no submit selector yet: Enter is pressed in the box, which can't hit the wrong button
   },
   cartUrl: 'https://cart.godaddy.com/',
   addToCart: /add to cart|^select$|^add$/i,

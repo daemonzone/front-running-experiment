@@ -17,8 +17,8 @@ export const config = {
     .map(([tld, w]) => ({ tld: tld.trim(), weight: Number(w) })),
   // Pacing: deliberately slow: ONE search session a day with a few names, like a person would do.
   searchesPerRun: int(process.env.SEARCHES_PER_RUN, 3),
-  minDelaySec: int(process.env.MIN_DELAY_SEC, 90),
-  maxDelaySec: int(process.env.MAX_DELAY_SEC, 420),
+  minDelaySec: int(process.env.MIN_DELAY_SEC, 10),
+  maxDelaySec: int(process.env.MAX_DELAY_SEC, 30),
   // Monitoring
   monitorDays: int(process.env.MONITOR_DAYS, 90),
   rdapDelayMs: int(process.env.RDAP_DELAY_MS, 1500),

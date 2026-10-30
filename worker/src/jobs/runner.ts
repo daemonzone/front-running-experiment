@@ -43,12 +43,24 @@ export async function runJob<T extends Record<string, unknown> | void>(
   const t0 = Date.now();
   log.info('job started', { trigger });
 
+  // Ctrl+C / kill: record the run as aborted so it doesn't block the next manual run.
+  const onSignal = (sig: string) => {
+    q(`UPDATE job_runs SET status = 'aborted', finished_at = now(), error = $2 WHERE id = $1 AND status = 'running'`, [id, `interrupted (${sig})`])
+      .finally(() => { log.warn('interrupted, run marked as aborted', { signal: sig }); process.exit(130); });
+  };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+
   try {
     const summary = (await fn(log, id)) ?? {};
     await q(`UPDATE job_runs SET status = 'ok', finished_at = now(), summary = $2 WHERE id = $1`, [id, JSON.stringify(summary)]);
     log.info('job finished', { status: 'ok', duration_s: Math.round((Date.now() - t0) / 100) / 10, ...(summary as object) });
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
     return summary as T;
   } catch (e) {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
     const err = e as Error;
     await q(`UPDATE job_runs SET status = 'error', finished_at = now(), error = $2 WHERE id = $1`, [id, err.message]);
     log.error('job failed', { duration_s: Math.round((Date.now() - t0) / 100) / 10, error: err.message });

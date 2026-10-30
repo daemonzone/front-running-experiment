@@ -52,7 +52,7 @@ const rnd = (min: number, max: number) => min + Math.random() * (max - min);
 export interface TypedSearchConfig {
   homeUrl: string;                              // page with the domain search box
   input: (page: Page) => Locator;               // the search box
-  submit?: (page: Page) => Locator;             // the search button; Enter is pressed if omitted
+  submit?: (page: Page, input: Locator) => Locator; // the search button (given the box we typed in); Enter is pressed if omitted
 }
 
 const CHALLENGE_TITLE = /just a moment|access denied|attention required|verify you are human|security check/i;
@@ -128,7 +128,7 @@ export async function typeAndSearch(page: Page, domain: string, cfg: TypedSearch
 
   const before = page.url();
   if (cfg.submit) {
-    const btn = cfg.submit(page).first();
+    const btn = cfg.submit(page, input).first();
     log.info('pressing the search button');
     await mouseClick(page, btn);
   } else {
@@ -141,6 +141,12 @@ export async function typeAndSearch(page: Page, domain: string, cfg: TypedSearch
   await waitOutChallenge(page);
   await humanPause(2000, 4000);                 // time to read the results
   log.info('results page', { url: page.url().slice(0, 140), changed: page.url() !== before, title: await page.title().catch(() => '') });
+  // A search only counts if the results page actually shows the name. Without this, pressing the wrong
+  // button (e.g. a site-wide search) would be recorded as a successful search.
+  const shown = (await page.evaluate(() => document.body?.innerText ?? '').catch(() => '')).toLowerCase().includes(domain.toLowerCase());
+  if (!shown) {
+    throw new Error(`the results for ${domain} are not on the page (title "${await page.title().catch(() => '')}", url unchanged: ${page.url() === before}); the search was probably not submitted`);
+  }
   const available = await detectAvailability(page, domain);
   log.info('availability as the page shows it', { domain, available: available ?? 'unknown' });
   return { siteSaysAvailable: available };

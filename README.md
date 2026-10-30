@@ -58,7 +58,7 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `doc
 | `words [n] [--check]` | Preview `n` generated names and the recipe of each; `--check` samples their RDAP availability. No database writes |
 | `generate [YYYY-MM]` | Generate that month's cohort (default: current): `NAMES_PER_ARM` RDAP-verified names for every group + control; every candidate is logged in `name_candidates`. Idempotent (tops up short groups) |
 | `consolidate [YYYY-MM]` | Freeze a cohort's results into an immutable snapshot (default: all finished, unconsolidated months) |
-| `search [n] [options]` | Search up to `n` pending names (default 3) on their assigned registrar, one after the other with random 90–420 s pauses. Options: `--registrar=<slug>`, `--action=<search_only\|search_cart>`, `--domain=<name>`, `--dry-run`. See [Scanning the names](#scanning-the-names-manual-run) |
+| `search [n] [options]` | Search up to `n` pending names (default 3) on their assigned registrar, one after the other with random 10–30 s pauses. Options: `--registrar=<slug>`, `--action=<search_only\|search_cart>`, `--domain=<name>`, `--dry-run`. See [Scanning the names](#scanning-the-names-manual-run) |
 | `monitor` | RDAP-check everything being monitored and flag newly registered names |
 | `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (only for registrars with `requires_login`) |
 | `log-manual <domain> <action> [notes]` | Record a search you did by hand when an adapter breaks. The action must match the assignment |
@@ -189,7 +189,7 @@ npm run cli -- search 1 --registrar=namecheap --action=search_cart --headed -v
 # One specific name (it must still be pending)
 npm run cli -- search --domain=seleneova.com --headed -v
 
-# Several in a row. --fast = 3-8 s pauses (testing only); without it the pauses are 90-420 s like a person
+# Several in a row. --fast = 3-8 s pauses (testing only); without it the pauses are 10-30 s
 npm run cli -- search 3 --headed --fast
 npm run cli -- search 5 --headed
 
@@ -384,7 +384,7 @@ Other commands: `consolidate [YYYY-MM]` (freeze a month), `manifest` (hash assig
 | `--quiet` | warnings and errors only |
 | `--headed` | show the browser window (Mac route only; Docker has no display) |
 | `--chrome` | use the real Google Chrome installed on the Mac, with a visible window (`BROWSER_CHANNEL=chrome`) |
-| `--fast` | short 3–8 s pauses between searches instead of 90–420 s (manual testing only) |
+| `--fast` | short 3–8 s pauses between searches instead of 10–30 s (manual testing only) |
 | `--force` | run even if another job is marked as running |
 | `--no-file` | don't write the log file |
 | `--dry-run` | (`search`) list the names that would be searched; no browser, nothing changes |
