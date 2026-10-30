@@ -1,84 +1,153 @@
 import Link from 'next/link';
+import { ArmBars } from '@/components/ArmBars';
+import { CumulativeChart } from '@/components/CumulativeChart';
+import { StatTile } from '@/components/StatTile';
 import { q } from '@/lib/db';
+import { fisherOneSided } from '@/lib/stats';
+import { actionLabel, fmtDate, fmtDelay, type Action, type ArmDatum, type SeriesDatum } from '@/lib/viz';
+import { site } from '@/lib/site';
 
 export const dynamic = 'force-dynamic';
 
-const fmt = (d: Date | null) => (d ? new Date(d).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : '—');
-const actionLabel: Record<string, string> = {
-  search_only: 'search only', search_cart: 'search + cart', no_search: 'never searched',
-};
-
 export default async function Home() {
-  const arms = await q(`SELECT * FROM arm_stats`);
-  const hits = await q(
-    `SELECT d.name, d.assigned_action, r.name AS registrar, d.searched_at, d.rdap_created_at,
-            d.registered_detected_at, d.rdap_registrar_name,
-            COALESCE(d.rdap_created_at, d.registered_detected_at) - d.searched_at AS delay
-       FROM domains d LEFT JOIN registrars r ON r.id = d.flagged_registrar_id
-      WHERE d.status = 'registered' ORDER BY d.registered_detected_at DESC`);
-  const totals = (await q(
+  const armRows = await q<{ slug: string | null; name: string | null; action: Action; n: number; hits: number }>(
+    `SELECT r.slug, r.name, d.assigned_action AS action, COUNT(*)::int AS n,
+            (COUNT(*) FILTER (WHERE d.status = 'registered'))::int AS hits
+       FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id
+      GROUP BY r.id, r.slug, r.name, d.assigned_action
+      ORDER BY r.id NULLS LAST, d.assigned_action DESC`);
+  const control = armRows.find((a) => a.action === 'no_search');
+  const arms: ArmDatum[] = armRows.map((a) => ({
+    id: `${a.slug ?? 'control'}-${a.action}`,
+    colorKey: a.slug ?? 'control',
+    registrar: a.name ?? 'Control',
+    action: a.action,
+    n: a.n,
+    hits: a.hits,
+    p: a.action !== 'no_search' && control ? fisherOneSided(a.hits, a.n - a.hits, control.hits, control.n - control.hits) : null,
+  }));
+
+  const delays = await q<{ slug: string; days: number }>(
+    `SELECT COALESCE(r.slug, 'control') AS slug,
+            GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(d.rdap_created_at, d.registered_detected_at) - d.searched_at)) / 86400)::float AS days
+       FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id
+      WHERE d.status = 'registered' AND d.searched_at IS NOT NULL`);
+  const groups = new Map<string, SeriesDatum>();
+  for (const a of arms) {
+    const g = groups.get(a.colorKey) ?? { id: a.colorKey, name: a.registrar, colorKey: a.colorKey, days: [], n: 0 };
+    g.n += a.n;
+    groups.set(a.colorKey, g);
+  }
+  for (const d of delays) groups.get(d.slug)?.days.push(d.days);
+
+  const [t] = await q<{ total: number; active: number; registered: number; first: Date | null; last_check: Date | null; age: number | null }>(
     `SELECT COUNT(*)::int AS total,
-            COUNT(*) FILTER (WHERE status IN ('monitoring','pending_search'))::int AS active,
-            COUNT(*) FILTER (WHERE status = 'registered')::int AS registered,
-            MAX(r.checked_at) AS last_check
-       FROM domains d LEFT JOIN LATERAL (SELECT MAX(checked_at) AS checked_at FROM rdap_checks c WHERE c.domain_id = d.id) r ON TRUE`))[0];
+            (COUNT(*) FILTER (WHERE status IN ('monitoring','pending_search')))::int AS active,
+            (COUNT(*) FILTER (WHERE status = 'registered'))::int AS registered,
+            MIN(searched_at) AS first,
+            (SELECT MAX(checked_at) FROM rdap_checks) AS last_check,
+            EXTRACT(EPOCH FROM (now() - MIN(searched_at))) / 86400 AS age
+       FROM domains`);
+
+  const hits = await q(
+    `SELECT d.name, d.assigned_action AS action, r.name AS registrar, d.searched_at, d.rdap_registrar_name,
+            EXTRACT(EPOCH FROM (COALESCE(d.rdap_created_at, d.registered_detected_at) - d.searched_at)) / 86400 AS days
+       FROM domains d LEFT JOIN registrars r ON r.id = d.flagged_registrar_id
+      WHERE d.status = 'registered' ORDER BY d.registered_detected_at DESC LIMIT 25`);
 
   return (
     <>
-      <h1>Domain front-running experiment</h1>
-      <p className="muted">
-        Randomly generated, brand-like names that were unregistered at generation time (verified via RDAP) are
-        searched on different registrars (search only / search + add to cart) or never searched (control). RDAP is
-        then polled daily. A name registered by someone else is flagged against the registrar it was searched on.
-        Raw data: <a href="/api/export?table=domains">domains.csv</a> · <a href="/api/export?table=search_log">search_log.csv</a> ·{' '}
-        <a href="/api/export?table=rdap_checks">rdap_checks.csv</a>
-      </p>
+      <section className="hero">
+        <div className="hero__copy">
+          <span className="eyebrow">Open experiment · live data</span>
+          <h1>Do registrars register names after you search for them?</h1>
+          <p className="lede">
+            A suspicion, tested. Unregistered, randomly generated names are searched on different registrars — or never —
+            and then watched daily in the public registry data. Every result is published, whatever it shows.
+          </p>
+          <div className="btn-row">
+            <Link className="btn btn--primary" href="/method">Read the method</Link>
+            <Link className="btn" href="/domains">Browse all names</Link>
+            <a className="btn" href="/api/export?table=domains">Download CSV</a>
+          </div>
+        </div>
+        <aside className="hero-fig" aria-label="Names registered by someone else">
+          <div className="hero-fig__label">Registered by someone else so far</div>
+          <div className="hero-fig__value">{t.registered}</div>
+          <div className="hero-fig__hint">
+            out of {t.total} names · {t.active} still being watched
+            {t.age != null && <> · running for {Math.floor(t.age)} days</>}
+          </div>
+        </aside>
+      </section>
 
-      <p>
-        <b>{totals.total}</b> names · <b>{totals.active}</b> monitored · <b className={totals.registered ? 'hit' : ''}>{totals.registered}</b> registered
-        · last RDAP check {fmt(totals.last_check)}
-      </p>
+      <div className="tiles">
+        <StatTile label="Names in the experiment" value={t.total} hint={`started ${t.first ? fmtDate(t.first) : site.startDate}`} />
+        <StatTile label="Being monitored" value={t.active} hint={`${site.monitorDays}-day window each`} />
+        <StatTile label="Last registry check" value={t.last_check ? fmtDate(t.last_check) : '—'} hint={t.last_check ? new Date(t.last_check).toISOString().slice(11, 16) + ' UTC' : 'no check yet'} />
+        <StatTile label="Control names registered" value={control ? `${control.hits} / ${control.n}` : '—'} hint="never-searched baseline" />
+      </div>
 
-      <h2>Results by experiment arm</h2>
-      <table>
-        <thead><tr><th>Registrar</th><th>Action</th><th className="n">Names</th><th className="n">Registered</th><th className="n">Monitoring</th><th className="n">Rate</th></tr></thead>
-        <tbody>
-          {arms.map((a: any, i: number) => (
-            <tr key={i}>
-              <td>{a.registrar}</td>
-              <td>{actionLabel[a.action]}</td>
-              <td className="n">{a.domains}</td>
-              <td className={`n ${a.registered > 0 ? 'hit' : ''}`}>{a.registered}</td>
-              <td className="n">{a.still_monitoring}</td>
-              <td className="n">{a.registered_pct ?? 0}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <section className="section">
+        <div className="section__head">
+          <div>
+            <h2>Share of names registered, by group</h2>
+            <p>
+              Each bar is one group of names. The control group — never searched anywhere — shows how often a name like
+              these is registered anyway. Hover a bar for the numbers and the test against the control.
+            </p>
+          </div>
+        </div>
+        <div className="card">
+          {arms.length ? <ArmBars data={arms} /> : <p className="empty">No names yet. Generate a batch to start the experiment.</p>}
+        </div>
+      </section>
 
-      <h2>Registered names</h2>
-      {hits.length === 0 ? (
-        <p className="muted">None so far.</p>
-      ) : (
-        <table>
-          <thead><tr><th>Domain</th><th>Searched on</th><th>Action</th><th>Searched at</th><th>Registered (RDAP)</th><th>Delay</th><th>Registered via</th></tr></thead>
-          <tbody>
-            {hits.map((h: any) => (
-              <tr key={h.name}>
-                <td><Link href={`/domains/${h.name}`}>{h.name}</Link></td>
-                <td>{h.registrar ?? '(control)'}</td>
-                <td>{actionLabel[h.assigned_action]}</td>
-                <td>{fmt(h.searched_at)}</td>
-                <td>{fmt(h.rdap_created_at ?? h.registered_detected_at)}</td>
-                <td>{h.delay ? `${h.delay.days ?? 0}d ${h.delay.hours ?? 0}h` : '—'}</td>
-                <td>{h.rdap_registrar_name ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <section className="section">
+        <div className="section__head">
+          <div>
+            <h2>When do registrations happen?</h2>
+            <p>Cumulative registered names, by days elapsed since the search (or since monitoring started, for the control).</p>
+          </div>
+        </div>
+        <div className="card">
+          <CumulativeChart series={[...groups.values()]} windowDays={site.monitorDays} observedDays={t.age ?? 1} />
+        </div>
+      </section>
 
-      <p><Link href="/domains">All names →</Link></p>
+      <section className="section">
+        <div className="section__head"><h2>Registered names</h2><Link href="/domains?status=registered">View all →</Link></div>
+        <div className="card card--flush table-wrap">
+          {hits.length === 0 ? (
+            <p className="empty">None so far. This table fills in as the registry reports registrations.</p>
+          ) : (
+            <table>
+              <thead><tr><th>Domain</th><th>Searched on</th><th>Action</th><th>Searched</th><th className="n">Delay</th><th>Registered via</th></tr></thead>
+              <tbody>
+                {hits.map((h: any) => (
+                  <tr key={h.name}>
+                    <td><Link href={`/domains/${h.name}`}><b>{h.name}</b></Link></td>
+                    <td>{h.registrar ?? 'Control'}</td>
+                    <td>{actionLabel[h.action as Action]}</td>
+                    <td>{fmtDate(h.searched_at)}</td>
+                    <td className="n">{fmtDelay(h.days)}</td>
+                    <td>{h.rdap_registrar_name ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section__head"><h2>How it works</h2></div>
+        <div className="grid-3">
+          <div className="card step"><span className="step__num">1</span><h3>Generate</h3><p>Brand-like names that the registry itself says are free. Each is randomly assigned to a group, and the assignment is fingerprinted before any search.</p></div>
+          <div className="card step"><span className="step__num">2</span><h3>Search</h3><p>A real browser searches a few names a day, like a person would — some also added to the cart, never purchased. Control names are never typed anywhere.</p></div>
+          <div className="card step"><span className="step__num">3</span><h3>Watch</h3><p>Every day the public registry (RDAP) is asked about each name. A newly registered name is flagged against the registrar it was searched on.</p></div>
+        </div>
+      </section>
     </>
   );
 }
