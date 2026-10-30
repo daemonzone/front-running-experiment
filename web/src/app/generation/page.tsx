@@ -24,8 +24,13 @@ export default async function Generation({ searchParams }: { searchParams: Promi
     `SELECT d.name, d.assigned_action AS action, r.slug AS registrar
        FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id WHERE d.cohort = $1::date ORDER BY d.name`, [date]);
   const currentSha = createHash('sha256').update(listRows.map((r) => `${r.name}\t${r.action}\t${r.registrar ?? '-'}`).join('\n')).digest('hex');
-  const [exposure] = await q<{ first: Date | null }>(
-    `SELECT MIN(searched_at) AS first FROM domains WHERE cohort = $1::date AND assigned_action <> 'no_search' AND searched_at IS NOT NULL`, [date]);
+  // Searches made AFTER the cohort was generated are the cohort's own exposures. A name searched BEFORE the cohort existed
+  // (e.g. swapped in from elsewhere) was never covered by the pre-registration, so it is reported separately.
+  const [exposure] = await q<{ first_after: Date | null; before_names: string[] | null }>(
+    `SELECT MIN(searched_at) FILTER (WHERE searched_at >= $2::timestamptz) AS first_after,
+            ARRAY_AGG(name ORDER BY name) FILTER (WHERE searched_at < $2::timestamptz) AS before_names
+       FROM domains WHERE cohort = $1::date AND assigned_action <> 'no_search' AND searched_at IS NOT NULL`,
+    [date, cohort?.generated_at ?? new Date(0)]);
   const perArm: number = cohort?.names_per_arm ?? 5;
 
   const candidates = await q(
@@ -82,19 +87,25 @@ export default async function Generation({ searchParams }: { searchParams: Promi
 
           {cohort.assignments_sha256 && (() => {
             const hashedAt = cohort.assignments_hashed_at ? new Date(cohort.assignments_hashed_at) : null;
-            const firstSearch = exposure?.first ? new Date(exposure.first) : null;
+            const firstSearch = exposure?.first_after ? new Date(exposure.first_after) : null;
+            const preSearched = exposure?.before_names ?? [];
             const before = hashedAt && (!firstSearch || hashedAt < firstSearch);
             const matches = currentSha === cohort.assignments_sha256;
             return (
-              <div className={`notice ${before && matches ? '' : 'notice--warn'}`}>
+              <div className={`notice ${before && matches && preSearched.length === 0 ? '' : 'notice--warn'}`}>
                 <b>Assignment fingerprint.</b> A SHA-256 hash of this month&apos;s list of which name goes to which group. If even one line changes, the hash changes, so it proves the list was fixed:
                 <div><code style={{ wordBreak: 'break-all' }}>{cohort.assignments_sha256}</code></div>
                 <p className="fp-line">
                   {hashedAt ? <>Computed {fmtDate(hashedAt, true)}. </> : null}
                   {before
-                    ? <b>✓ Computed before the first search{firstSearch ? '' : ' (none yet)'}.</b>
+                    ? <b>✓ Computed before the first search of this cohort{firstSearch ? ` (${fmtDate(firstSearch, true)})` : ' (none yet)'}.</b>
                     : <b>⚠ Computed after searches began{firstSearch ? ` (first search ${fmtDate(firstSearch, true)})` : ''}: it documents the list as it stands, but it is not a pre-registration.</b>}
                 </p>
+                {preSearched.length > 0 && (
+                  <p className="fp-line">
+                    <b>⚠ {preSearched.length} name{preSearched.length > 1 ? 's were' : ' was'} already searched before this cohort was generated</b> ({preSearched.join(', ')}): not covered by the pre-registration.
+                  </p>
+                )}
                 {matches ? (
                   <p className="fp-line">
                     <b>✓ Matches the current list.</b> To check it yourself, download <a href={`/api/export?table=assignments&month=${sel}`}>the list</a> and run <code>shasum -a 256 assignments-{sel}.txt</code>: the result must equal the hash above.
