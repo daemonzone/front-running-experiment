@@ -15,6 +15,7 @@ import { login, logManual, search } from './jobs/search.js';
 // ---- command line -------------------------------------------------------------------------------
 // Both styles work:   cli.ts generate 2026-11      cli.ts --generate 202611      cli.ts --generate=2026-11
 // Options:  --verbose/-v  --quiet  --headed  --fast  --force  --no-file  --searches=N  --check
+//           --chrome (use the installed Google Chrome, headed)
 //           --registrar=<slug> --action=<search_only|search_cart> --domain=<name> --dry-run   (for search)
 const COMMANDS = ['generate', 'search', 'monitor', 'consolidate', 'manifest', 'run', 'runs', 'status', 'scheduler', 'login', 'log-manual', 'words'];
 const raw = process.argv.slice(2);
@@ -33,6 +34,7 @@ if (flags.has('--verbose') || flags.has('-v')) setLogLevel('debug');
 if (flags.has('--quiet')) setLogLevel('warn');
 if (flags.has('--no-file')) setLogFile(false);
 if (flags.has('--headed')) config.headless = false;
+if (flags.has('--chrome')) { config.browserChannel = 'chrome'; config.headless = false; } // real Chrome, visible window
 const force = flags.has('--force');
 const opt = (name: string) => raw.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
 if (flags.has('--fast')) { config.minDelaySec = 3; config.maxDelaySec = 8; } // short pauses for manual testing
@@ -189,6 +191,8 @@ flags:
   -v, --verbose   debug logging (browser navigation, RDAP lookups, selectors)
   --quiet         warnings and errors only
   --headed        show the browser window (run on the host, not in Docker)
+  --chrome        use the real Google Chrome installed on this machine, with a visible window
+                  (same as BROWSER_CHANNEL=chrome HEADLESS=false). Not available inside Docker
   --fast          short pauses (3-8 s) between searches, for manual testing
   --force         run even if another job is marked as running
   --no-file       don't write data/logs/worker-YYYY-MM-DD.log`);

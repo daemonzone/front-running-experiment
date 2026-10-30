@@ -4,6 +4,9 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL ?? 'postgres://frontrunning:frontrunning@localhost:15432/frontrunning',
   dataDir: process.env.DATA_DIR ?? './data',
   headless: (process.env.HEADLESS ?? 'true') !== 'false',
+  // 'chrome' = the real Google Chrome installed on this machine (macOS: /Applications/Google Chrome.app).
+  // Unset = Playwright's bundled Chromium (what the Docker image uses).
+  browserChannel: (process.env.BROWSER_CHANNEL || undefined) as 'chrome' | undefined,
   locale: process.env.BROWSER_LOCALE ?? 'en-US',
   // Naming
   // Monthly cohort: this many names for EVERY (registrar, action) group, and for the control group.

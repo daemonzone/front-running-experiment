@@ -91,7 +91,7 @@ A `search_cart` whose cart add can't be confirmed is logged as `error` and retri
 
 The adapters in `worker/src/adapters` were written **without being run against the live sites** (their markup changes often and may be behind bot protection). Before trusting the data:
 
-1. Run `search 1` with `HEADLESS=false` on the host (`cd worker && npm i && npx playwright install chromium && HEADLESS=false npm run cli -- search 1`) and watch what happens.
+1. Run `search 1 --chrome -v` on your Mac (`cd worker && npm install`) and watch what happens.
 2. Check `data/screenshots/` and `search_log.notes`/`cart_confirmed`. Fix the regexes/selectors in the adapter if needed.
 3. Headless Chromium in Docker is easier for sites to flag than a headed browser on your machine. If a site challenges you, do that search by hand and use `log-manual`. There is deliberately no CAPTCHA solving, fingerprint spoofing or proxy rotation here, and the pacing is slow on purpose (one short session a day). Check each registrar's ToS.
 4. Registrars with `requires_login = TRUE` reuse a session saved with `login <slug>` on the host (shared with the container through `./data`).
@@ -112,13 +112,9 @@ By default carts are left abandoned like a real visitor would (`CLEAR_CART=true`
 
 ## Where to run the browser
 
-What matters is that the exposure looks like what you normally do: a headed Chromium (`HEADLESS=false`) on your usual home/office IP. Datacenter IPs (any VPS or cloud) are what bot defences flag first and are not how you originally searched. Options, best first:
+**Decision: your Mac, with the real Google Chrome** (`--chrome`). A headed Chrome on your home connection is the closest thing to how you originally searched. Headless Chromium announces itself as "HeadlessChrome", datacenter IPs are what bot defences flag first, and Docker can't use your Mac's Chrome, so the searches run on the host. See [Running on your Mac](#running-on-your-mac-real-chrome).
 
-1. **Your Mac, worker run on the host** (`npm run cli -- scheduler` with `HEADLESS=false`), with Postgres on Neon or the compose `db`. Simplest and most realistic. It must be awake at the cron times.
-2. **An always-on home machine** (mini PC, Mac mini, NAS) running `docker compose up -d` with `HEADLESS=false`; the worker container uses a virtual display (Xvfb). Same residential IP, no need to keep your laptop on.
-3. **A VPS** only as a last resort; expect challenges and a different network fingerprint than your own searches.
-
-Keep the same egress IP for the whole experiment (it is logged per search), and put `web/` on Vercel with Neon if you want it public.
+Keep the same egress IP for the whole experiment (it is logged per search), and put `web/` on Vercel with Neon if you want it public. A 32-bit ARM board (e.g. an armv7 Orange Pi) can't run the browser, but could host the browser-less jobs (`monitor`, `generate`, `consolidate`) if you ever want an always-on box.
 
 ## Site pages
 
@@ -250,6 +246,66 @@ docker compose logs -f worker
 
 It then runs **one search session a day at 10:17** (container timezone) with 3 names (`SEARCHES_PER_RUN`; change the time with `CRON_SEARCH`), so a cohort of 30 searchable names is exposed over about ten days, and it runs the RDAP scan every morning at 06:30. A bigger `SEARCHES_PER_RUN` finishes the cohort sooner; the names' 90-day windows start at their own search, so spreading the searches doesn't affect the comparison. Don't search the whole cohort within minutes: the slow pace is deliberate, to look like a person.
 
+## Running on your Mac (real Chrome)
+
+The searches use the Google Chrome installed on your Mac (`/Applications/Google Chrome.app`), driven by Playwright. No `npx playwright install` is needed for this. The worker logs the Chrome version at every run, and each search stores the browser's user agent.
+
+### One-time setup
+
+```bash
+cd worker && npm install
+docker compose up -d db web          # the database (and the site) in Docker; the Docker worker stays stopped
+```
+
+The worker finds the database at `localhost:15432` by default. Settings can be given as flags or environment variables:
+
+| | Flag | Environment |
+|---|---|---|
+| use the installed Google Chrome, visible window | `--chrome` | `BROWSER_CHANNEL=chrome` + `HEADLESS=false` |
+
+### Searching
+
+```bash
+cd worker
+npm run cli -- search 1 --chrome -v            # one search, Chrome window visible, debug detail
+```
+
+### The daily schedule, from your Mac
+
+```bash
+cd worker
+caffeinate -is npm run cli -- scheduler --chrome
+```
+
+This is the same scheduler the container runs (one search session a day at 10:17, RDAP monitor at 06:30, monthly generate and consolidate on the 1st), just using your Chrome. `caffeinate -is` stops the Mac from sleeping while it runs. Leave the terminal open, or use the LaunchAgent below.
+
+- **Run only one scheduler.** Keep the Docker `worker` container stopped (`docker compose stop worker`), otherwise both would run the same jobs.
+- **If the Mac sleeps or is off** at 10:17, that day's session is skipped. The scheduler catches up on the monthly `consolidate` and `generate` when it starts, but searches simply wait for the next day, and a missed RDAP check just means the next check sees the change later.
+- **What the site sees.** A real, headed Chrome, but still *automated*: Chrome shows its "controlled by automated test software" bar, and `navigator.webdriver` is true. There is deliberately no stealth or fingerprint spoofing. If a registrar challenges the browser, do that search by hand and record it with `log-manual`.
+- **Clean profile.** Each search opens a fresh browser context, with no extensions, history or logins of your everyday Chrome. That keeps extensions (which can send URLs elsewhere) out of the experiment.
+
+### Optional: start it automatically at login (LaunchAgent)
+
+A *LaunchAgent* (not a daemon) is needed, because a visible browser requires your logged-in desktop session. Save as `~/Library/LaunchAgents/com.frontrunning.worker.plist`, fix the path, then `launchctl load ~/Library/LaunchAgents/com.frontrunning.worker.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.frontrunning.worker</string>
+  <key>ProgramArguments</key><array>
+    <string>/bin/zsh</string><string>-lc</string>
+    <string>cd "/Users/YOU/Desktop/Tech Stuff/FrontRunning/front-running-experiment/worker" &amp;&amp; caffeinate -is npm run cli -- scheduler --chrome</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/frontrunning-worker.out</string>
+  <key>StandardErrorPath</key><string>/tmp/frontrunning-worker.err</string>
+</dict></plist>
+```
+
+Stop it with `launchctl unload ~/Library/LaunchAgents/com.frontrunning.worker.plist`. The worker's own logs are in `data/logs/` either way.
+
 ## Running the worker manually
 
 The scheduler container does all of this on its own; run things by hand when you want to test, debug or force a step.
@@ -323,6 +379,7 @@ Other commands: `consolidate [YYYY-MM]` (freeze a month), `manifest` (hash assig
 | `-v`, `--verbose` | debug logging: browser navigation, RDAP lookups, selector and cart checks |
 | `--quiet` | warnings and errors only |
 | `--headed` | show the browser window (Mac route only; Docker has no display) |
+| `--chrome` | use the real Google Chrome installed on the Mac, with a visible window (`BROWSER_CHANNEL=chrome`) |
 | `--fast` | short 3–8 s pauses between searches instead of 90–420 s (manual testing only) |
 | `--force` | run even if another job is marked as running |
 | `--no-file` | don't write the log file |

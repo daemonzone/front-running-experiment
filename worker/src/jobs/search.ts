@@ -9,6 +9,22 @@ import { q, type DomainRow, type Registrar } from '../db.js';
 import { createLogger, isDebug, type Logger } from '../logger.js';
 import { sleep } from '../rdap.js';
 
+/** Launch the browser: the real Chrome if BROWSER_CHANNEL=chrome, otherwise Playwright's Chromium. */
+export async function launchBrowser(log: Logger): Promise<Browser> {
+  try {
+    const browser = await chromium.launch({ headless: config.headless, channel: config.browserChannel });
+    log.info('browser ready', { browser: config.browserChannel ?? 'chromium (bundled)', version: browser.version(), headless: config.headless });
+    if (config.headless) log.warn('headless browsers identify themselves as HeadlessChrome; use --chrome (or --headed) for real searches');
+    return browser;
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (config.browserChannel === 'chrome') {
+      throw new Error(`could not launch Google Chrome (${msg.split('\n')[0]}). Is it installed? macOS: /Applications/Google Chrome.app. Without it, unset BROWSER_CHANNEL to use Playwright's Chromium (npx playwright install chromium).`);
+    }
+    throw e;
+  }
+}
+
 const clearCart = (process.env.CLEAR_CART ?? 'false') === 'true';
 
 async function egressIp(): Promise<string | null> {
@@ -211,8 +227,8 @@ export async function search(
 
   const registrars = await q<Registrar>('SELECT * FROM registrars WHERE enabled');
   const ip = await egressIp();
-  log.info('launching browser', { headless: config.headless, egress_ip: ip ?? 'unknown', locale: config.locale });
-  const browser = await chromium.launch({ headless: config.headless });
+  log.info('launching browser', { channel: config.browserChannel ?? 'chromium', headless: config.headless, egress_ip: ip ?? 'unknown', locale: config.locale });
+  const browser = await launchBrowser(log);
   let ok = 0, failed = 0;
   try {
     for (let i = 0; i < rows.length; i++) {
@@ -237,7 +253,7 @@ export async function search(
 export async function login(slug: string): Promise<void> {
   const [r] = await q<Registrar>('SELECT * FROM registrars WHERE slug = $1', [slug]);
   if (!r) throw new Error(`unknown registrar ${slug}`);
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({ headless: false, channel: config.browserChannel });
   const context = await browser.newContext({ locale: config.locale, viewport: { width: 1366, height: 850 } });
   const page = await context.newPage();
   await page.goto(r.search_url_template?.split('{')[0] || 'about:blank');
