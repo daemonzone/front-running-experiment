@@ -113,13 +113,28 @@ async function mouseClick(page: Page, el: Locator) {
   await el.click({ timeout: 10_000 });
 }
 
+/** page.goto, retried once or twice when the load is cancelled (net::ERR_ABORTED) or the tab closed under us. */
+async function gotoWithRetry(page: Page, url: string) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      return;
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (attempt >= 3 || !/ERR_ABORTED|frame was detached/i.test(msg)) throw e;
+      log.warn('page load was cancelled, retrying', { attempt, url });
+      await wait(rnd(2000, 4000));
+    }
+  }
+}
+
 /**
  * The human flow: open the registrar's page, click the search box, type the name letter by letter,
  * press the search button. Returns what the results page seems to say about availability.
  */
 export async function typeAndSearch(page: Page, domain: string, cfg: TypedSearchConfig): Promise<SearchResult> {
   log.info('opening the registrar page', { url: cfg.homeUrl });
-  await page.goto(cfg.homeUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await gotoWithRetry(page, cfg.homeUrl);
   await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => log.debug('network not idle after 20s, continuing'));
   await waitOutChallenge(page);
   await dismissConsent(page);
