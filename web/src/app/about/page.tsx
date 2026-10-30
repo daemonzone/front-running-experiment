@@ -3,6 +3,8 @@ import { experimentStart } from '@/lib/experiment';
 import { site } from '@/lib/site';
 import { fmtDate } from '@/lib/viz';
 
+export const dynamic = 'force-dynamic'; // reads the start date from the database
+
 export default async function About() {
   const start = await experimentStart();
   return (
