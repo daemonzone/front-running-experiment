@@ -26,7 +26,7 @@ cp .env.example .env            # optional
 docker compose up -d --build db web
 # generate the first batch (RDAP-checks every candidate, ~2s per name)
 docker compose run --rm worker npx tsx src/cli.ts generate 40
-open http://localhost:10080
+open http://localhost:10100
 ```
 
 **Validate the registrar adapters before enabling the scheduler** (see [Adapters](#adapters-read-this)), then:
@@ -89,7 +89,7 @@ By default carts are left abandoned like a real visitor would (`CLEAR_CART=true`
 
 ## Web UI
 
-`http://localhost:10080`: arm results, registered names with delay since search, per-domain timeline, CSV exports (`/api/export?table=domains|search_log|rdap_checks`). Read-only, no login, no write endpoints. To publish it, deploy `web/` anywhere (Vercel, etc.) with `DATABASE_URL` pointing to Neon (ideally a read-only role).
+`http://localhost:10100`: arm results, registered names with delay since search, per-domain timeline, CSV exports (`/api/export?table=domains|search_log|rdap_checks`). Read-only, no login, no write endpoints. To publish it, deploy `web/` anywhere (Vercel, etc.) with `DATABASE_URL` pointing to Neon (ideally a read-only role).
 
 ## Where to run the browser
 

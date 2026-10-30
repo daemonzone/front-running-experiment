@@ -18,7 +18,7 @@ services:
     build: ./web
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://frontrunning:frontrunning@db:5432/frontrunning}
-    ports: ["10080:3000"]
+    ports: ["10100:3000"]
     depends_on:
       db: { condition: service_healthy }
 
