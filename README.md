@@ -89,6 +89,10 @@ A `search_cart` whose cart add can't be confirmed is logged as `error` and retri
 
 ## Adapters (read this)
 
+**How a search is made.** The adapter opens the registrar's page, moves the mouse to the search box, clicks it, types the name **letter by letter** (uneven 70–190 ms keystrokes, the odd hesitation), then presses the search button, as a person would. It never opens a results URL directly. If the site shows a **security check** page ("Just a moment…", "Access Denied"), the adapter doesn't try to get around it: in a visible window it waits up to 3 minutes for you to complete the check, headless it stops.
+
+**Status.** IONOS: validated end to end (search + cart) with real Chrome. Namecheap and GoDaddy: written against generic selectors; both blocked a *headless* visit (Cloudflare "Just a moment…" and Akamai "Access Denied"), so they need to be checked in a visible Chrome (`search --registrar=namecheap --chrome -v`) and their selectors adjusted from the failure screenshots.
+
 The adapters in `worker/src/adapters` were written **without being run against the live sites** (their markup changes often and may be behind bot protection). Before trusting the data:
 
 1. Run `search 1 --chrome -v` on your Mac (`cd worker && npm install`) and watch what happens.

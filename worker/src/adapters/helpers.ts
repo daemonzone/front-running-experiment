@@ -1,4 +1,5 @@
-import type { Page } from 'playwright';
+import type { Locator, Page } from 'playwright';
+import { config } from '../config.js';
 import type { Registrar } from '../db.js';
 import { createLogger } from '../logger.js';
 import type { Adapter, CartResult, SearchResult } from './types.js';
@@ -44,18 +45,122 @@ export async function openAndSearch(page: Page, registrar: Registrar, domain: st
   return { siteSaysAvailable: available };
 }
 
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const rnd = (min: number, max: number) => min + Math.random() * (max - min);
+
+/** How to find the search box and its button on a registrar's landing page. */
+export interface TypedSearchConfig {
+  homeUrl: string;                              // page with the domain search box
+  input: (page: Page) => Locator;               // the search box
+  submit?: (page: Page) => Locator;             // the search button; Enter is pressed if omitted
+}
+
+const CHALLENGE_TITLE = /just a moment|access denied|attention required|verify you are human|security check/i;
+const CHALLENGE_BODY = /performing security verification|are you a (robot|human)|verify you are human|checking your browser/i;
+
+async function onChallengePage(page: Page): Promise<boolean> {
+  const title = await page.title().catch(() => '');
+  if (CHALLENGE_TITLE.test(title)) return true;
+  const body = await page.evaluate(() => document.body?.innerText.slice(0, 400) ?? '').catch(() => '');
+  return CHALLENGE_BODY.test(body);
+}
+
+/**
+ * Registrars sometimes show a security check before the page. We never try to get around it: in a
+ * visible window we wait (up to 3 min) for the person watching to complete it; headless, we stop.
+ */
+async function waitOutChallenge(page: Page): Promise<void> {
+  if (!(await onChallengePage(page))) return;
+  if (config.headless) throw new Error(`security check page shown (title "${await page.title()}"); headless runs can't complete it. Use --chrome and complete it in the window`);
+  log.warn('SECURITY CHECK shown by the site: complete it in the browser window (waiting up to 3 minutes)', { url: page.url().slice(0, 100) });
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    await wait(2000);
+    if (!(await onChallengePage(page))) { log.info('security check passed'); await page.waitForLoadState('domcontentloaded').catch(() => {}); return; }
+  }
+  throw new Error('security check was not completed within 3 minutes');
+}
+
+/** Type like a person: letter by letter with uneven timing and the occasional hesitation. */
+async function typeLikeAPerson(page: Page, text: string) {
+  for (let i = 0; i < text.length; i++) {
+    await page.keyboard.type(text[i]);
+    await wait(rnd(70, 190));
+    if (i > 1 && Math.random() < 0.18) await wait(rnd(180, 420)); // a small hesitation
+  }
+}
+
+/** Move the mouse to an element in a few steps and click it. */
+async function mouseClick(page: Page, el: Locator) {
+  const box = await el.boundingBox();
+  if (box) {
+    await page.mouse.move(box.x + box.width * rnd(0.25, 0.75), box.y + box.height * rnd(0.3, 0.7), { steps: Math.round(rnd(12, 28)) });
+    await wait(rnd(120, 360));
+  }
+  await el.click({ timeout: 10_000 });
+}
+
+/**
+ * The human flow: open the registrar's page, click the search box, type the name letter by letter,
+ * press the search button. Returns what the results page seems to say about availability.
+ */
+export async function typeAndSearch(page: Page, domain: string, cfg: TypedSearchConfig): Promise<SearchResult> {
+  log.info('opening the registrar page', { url: cfg.homeUrl });
+  await page.goto(cfg.homeUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => log.debug('network not idle after 20s, continuing'));
+  await waitOutChallenge(page);
+  await dismissConsent(page);
+  await humanPause(1500, 3200); // look at the page first
+
+  const input = cfg.input(page).first();
+  try {
+    await input.waitFor({ state: 'visible', timeout: 20_000 });
+  } catch {
+    throw new Error(`search box not found on ${page.url().slice(0, 100)} (selectors need tuning)`);
+  }
+  log.info('clicking the search box');
+  await mouseClick(page, input);
+  await input.fill('');                         // clear anything pre-filled
+  await humanPause(300, 800);
+  log.info('typing the name', { domain, letters: domain.length });
+  await typeLikeAPerson(page, domain);
+  await humanPause(500, 1400);                  // glance at what was typed
+
+  const before = page.url();
+  if (cfg.submit) {
+    const btn = cfg.submit(page).first();
+    log.info('pressing the search button');
+    await mouseClick(page, btn);
+  } else {
+    log.info('pressing Enter');
+    await page.keyboard.press('Enter');
+  }
+
+  await page.waitForLoadState('domcontentloaded', { timeout: 30_000 }).catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 25_000 }).catch(() => log.debug('network not idle after 25s, continuing'));
+  await waitOutChallenge(page);
+  await humanPause(2000, 4000);                 // time to read the results
+  log.info('results page', { url: page.url().slice(0, 140), changed: page.url() !== before, title: await page.title().catch(() => '') });
+  const available = await detectAvailability(page, domain);
+  log.info('availability as the page shows it', { domain, available: available ?? 'unknown' });
+  return { siteSaysAvailable: available };
+}
+
 export interface CartAdapterOptions {
+  typed: TypedSearchConfig;
   cartUrl: string;
   addToCart: RegExp;
   confirm: RegExp;
+  /** Registrar-specific proof that the name is really in the cart; replaces the text/URL heuristic. */
+  confirmCheck?: (page: Page, domain: string) => Promise<boolean>;
   remove: RegExp;
 }
 
 /** Click "Add to cart" in the result row that contains the domain, then look for a confirmation. */
 export function makeCartAdapter(opts: CartAdapterOptions): Adapter {
   return {
-    async search(page, domain, registrar) {
-      return openAndSearch(page, registrar, domain);
+    async search(page, domain) {
+      return typeAndSearch(page, domain, opts.typed);
     },
 
     async addToCart(page, domain): Promise<CartResult> {
@@ -78,7 +183,9 @@ export function makeCartAdapter(opts: CartAdapterOptions): Adapter {
       await humanPause(1500, 3000);
 
       const body = (await page.evaluate(() => document.body.innerText).catch(() => '')).toLowerCase();
-      const confirmed = opts.confirm.test(body) || page.url().toLowerCase().includes('cart');
+      const confirmed = opts.confirmCheck
+        ? await opts.confirmCheck(page, domain)
+        : opts.confirm.test(body) || page.url().toLowerCase().includes('cart');
       log.debug('cart confirmation check', { confirmed, url: page.url().slice(0, 120) });
       return { confirmed, notes: confirmed ? undefined : 'clicked, but no cart confirmation detected' };
     },
