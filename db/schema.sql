@@ -39,8 +39,7 @@ CREATE TABLE IF NOT EXISTS registrars (
 INSERT INTO registrars (slug, name, adapter_key, search_url_template, supports_cart, requires_login, iana_id, notes) VALUES
   ('namecheap',  'Namecheap',  'namecheap',  'https://www.namecheap.com/domains/registration/results/?domain={domain}', TRUE,  FALSE, 1068, NULL),
   ('godaddy',    'GoDaddy',    'godaddy',    'https://www.godaddy.com/domainsearch/find?domainToCheck={domain}',        TRUE,  FALSE, 146,  NULL),
-  ('ionos',      'IONOS',      'ionos',      'https://www.ionos.com/domains/domain-check?domain={domain}',              TRUE,  FALSE, 83,   NULL),
-  ('cloudflare', 'Cloudflare', 'cloudflare', 'https://dash.cloudflare.com/?to=/:account/domains/register',              FALSE, TRUE,  1910, 'No cart concept; requires a saved login session (npm run login cloudflare).')
+  ('ionos',      'IONOS',      'ionos',      'https://www.ionos.com/domains/domain-check?domain={domain}',              TRUE,  FALSE, 83,   NULL)
 ON CONFLICT (slug) DO NOTHING;
 
 -- ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ Randomly generated, brand-like names (`.com` mostly) that are verified unregiste
 
 | Arm | What happens |
 |---|---|
-| `search_only` | Searched on one registrar (Namecheap, GoDaddy, IONOS, Cloudflare) |
+| `search_only` | Searched on one registrar (Namecheap, GoDaddy, IONOS) |
 | `search_cart` | Searched **and added to the cart** (never purchased) on Namecheap, GoDaddy or IONOS |
 | `no_search` | Never typed anywhere. This is the control and gives the base rate |
 
@@ -26,7 +26,7 @@ cp .env.example .env            # optional
 docker compose up -d --build db web
 # generate the first batch (RDAP-checks every candidate, ~2s per name)
 docker compose run --rm worker npx tsx src/cli.ts generate 40
-open http://localhost:3000
+open http://localhost:10080
 ```
 
 **Validate the registrar adapters before enabling the scheduler** (see [Adapters](#adapters-read-this)), then:
@@ -45,7 +45,7 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:5432`) or via `dock
 | `generate [n]` | Create `n` names, RDAP-verify they're free, assign arms. Control names start monitoring immediately and get a `no_search` log row |
 | `search [n]` | Run up to `n` pending searches now (random 90–420 s pauses between them) |
 | `monitor` | RDAP-check everything being monitored and flag newly registered names |
-| `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (needed for Cloudflare) |
+| `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (only for registrars with `requires_login`) |
 | `log-manual <domain> <action> [notes]` | Record a search you did by hand when an adapter breaks. The action must match the assignment |
 | `status` | Per-arm table |
 | `scheduler` | Long-running cron (what the container does) |
@@ -74,7 +74,7 @@ The adapters in `worker/src/adapters` were written **without being run against t
 1. Run `search 1` with `HEADLESS=false` on the host (`cd worker && npm i && npx playwright install chromium && HEADLESS=false npm run cli -- search 1`) and watch what happens.
 2. Check `data/screenshots/` and `search_log.notes`/`cart_confirmed`. Fix the regexes/selectors in the adapter if needed.
 3. Headless Chromium in Docker is easier for sites to flag than a headed browser on your machine. If a site challenges you, do that search by hand and use `log-manual`. There is deliberately no CAPTCHA solving, fingerprint spoofing or proxy rotation here, and the pacing is slow on purpose (a few searches a day). Check each registrar's ToS.
-4. Cloudflare Registrar requires login and has no cart, so it only gets `search_only`. Run `login cloudflare` on the host once; the session is shared with the container through `./data`.
+4. Registrars with `requires_login = TRUE` reuse a session saved with `login <slug>` on the host (shared with the container through `./data`).
 
 By default carts are left abandoned like a real visitor would (`CLEAR_CART=true` empties them).
 
@@ -88,4 +88,14 @@ By default carts are left abandoned like a real visitor would (`CLEAR_CART=true`
 
 ## Web UI
 
-`http://localhost:3000`: arm results, registered names with delay since search, per-domain timeline, CSV exports (`/api/export?table=domains|search_log|rdap_checks`). Read-only, no login, no write endpoints. To publish it, deploy `web/` anywhere (Vercel, etc.) with `DATABASE_URL` pointing to Neon (ideally a read-only role).
+`http://localhost:10080`: arm results, registered names with delay since search, per-domain timeline, CSV exports (`/api/export?table=domains|search_log|rdap_checks`). Read-only, no login, no write endpoints. To publish it, deploy `web/` anywhere (Vercel, etc.) with `DATABASE_URL` pointing to Neon (ideally a read-only role).
+
+## Where to run the browser
+
+What matters is that the exposure looks like what you normally do: a headed Chromium (`HEADLESS=false`) on your usual home/office IP. Datacenter IPs (any VPS or cloud) are what bot defences flag first and are not how you originally searched. Options, best first:
+
+1. **Your Mac, worker run on the host** (`npm run cli -- scheduler` with `HEADLESS=false`), with Postgres on Neon or the compose `db`. Simplest and most realistic. It must be awake at the cron times.
+2. **An always-on home machine** (mini PC, Mac mini, NAS) running `docker compose up -d` with `HEADLESS=false`; the worker container uses a virtual display (Xvfb). Same residential IP, no need to keep your laptop on.
+3. **A VPS** only as a last resort; expect challenges and a different network fingerprint than your own searches.
+
+Keep the same egress IP for the whole experiment (it is logged per search), and put `web/` on Vercel with Neon if you want it public.

@@ -5,4 +5,5 @@ RUN npm install --no-audit --no-fund
 COPY tsconfig.json ./
 COPY src ./src
 ENV NODE_ENV=production
-CMD ["npx", "tsx", "src/cli.ts", "scheduler"]
+# HEADLESS=false runs a real (headed) Chromium on a virtual display.
+CMD ["sh", "-c", "if [ \"$HEADLESS\" = \"false\" ]; then exec xvfb-run -a --server-args='-screen 0 1366x850x24' npx tsx src/cli.ts scheduler; else exec npx tsx src/cli.ts scheduler; fi"]
