@@ -132,6 +132,33 @@ async function runOne(browser: Browser, d: DomainRow, r: Registrar, ip: string |
   }
 }
 
+/** Say WHY there is nothing to search, and what to do about it. */
+async function explainNothingToSearch(log: Logger, limit: number) {
+  const byStatus = await q<{ status: string; n: number }>(`SELECT status::text AS status, COUNT(*)::int AS n FROM domains GROUP BY 1`);
+  const total = byStatus.reduce((s, r) => s + r.n, 0);
+  const counts = Object.fromEntries(byStatus.map((r) => [r.status, r.n]));
+  if (total === 0) {
+    log.warn('nothing to search: no names exist yet. Run `generate` first, or `run`, which generates and then searches', { hint: 'cli generate' });
+  } else if (limit === 0) {
+    log.info('limit is 0, nothing attempted');
+  } else if (counts.pending_search) {
+    log.info('nothing selected this run', counts);
+  } else {
+    log.info('nothing to search: every name has already been searched (or failed). Wait for the next monthly cohort, or run `generate <YYYY-MM>`', counts);
+  }
+}
+
+/** Wait with a progress line every 30 s, so a long human-like pause doesn't look like a hang. */
+async function pause(seconds: number, log: Logger) {
+  let left = Math.round(seconds);
+  while (left > 0) {
+    const step = Math.min(30, left);
+    await sleep(step * 1000);
+    left -= step;
+    if (left > 0) log.info('still waiting', { seconds_left: left });
+  }
+}
+
 /** Process up to `limit` pending domains, with long random pauses between them. */
 export async function search(limit = config.searchesPerRun, log: Logger = createLogger('search')): Promise<Record<string, unknown>> {
   // Give up on domains that already failed 3 times, so a broken adapter doesn't loop forever.
@@ -144,7 +171,10 @@ export async function search(limit = config.searchesPerRun, log: Logger = create
     `SELECT d.id, d.name, d.label, d.tld, d.assigned_action, d.assigned_registrar_id
        FROM domains d WHERE d.status = 'pending_search' ORDER BY random() LIMIT $1`, [limit]);
   log.info('pending searches', { pending, this_run: rows.length, limit });
-  if (!rows.length) return { pending, attempted: 0, ok: 0, failed: 0 };
+  if (!rows.length) {
+    await explainNothingToSearch(log, limit);
+    return { pending, attempted: 0, ok: 0, failed: 0 };
+  }
 
   const registrars = await q<Registrar>('SELECT * FROM registrars WHERE enabled');
   const ip = await egressIp();
@@ -159,7 +189,7 @@ export async function search(limit = config.searchesPerRun, log: Logger = create
       if (i > 0) {
         const wait = config.minDelaySec + Math.random() * (config.maxDelaySec - config.minDelaySec);
         log.info('pausing like a human would', { seconds: Math.round(wait), next: i + 1, of: rows.length });
-        await sleep(wait * 1000);
+        await pause(wait, log);
       }
       (await runOne(browser, d, r, ip, log)) ? ok++ : failed++;
     }

@@ -19,6 +19,8 @@ if (flags.has('--quiet')) setLogLevel('warn');
 if (flags.has('--no-file')) setLogFile(false);
 if (flags.has('--headed')) config.headless = false;
 const force = flags.has('--force');
+const opt = (name: string) => raw.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
+if (flags.has('--fast')) { config.minDelaySec = 3; config.maxDelaySec = 8; } // short pauses for manual testing
 
 const log = createLogger('cli');
 
@@ -78,6 +80,33 @@ async function scheduler() {
   await new Promise(() => {}); // keep alive
 }
 
+// ---- run: the whole cycle, in the foreground ------------------------------------------------
+/** consolidate finished months -> generate this month's cohort if missing -> search -> monitor. */
+async function runAll() {
+  const rlog = createLogger('run');
+  const searches = opt('searches') ? Number(opt('searches')) : config.searchesPerRun;
+  rlog.info('full cycle, in the foreground', { searches, headless: config.headless, pauses_s: `${config.minDelaySec}-${config.maxDelaySec}` });
+  await stateSnapshot(rlog);
+
+  rlog.info('step 1/4: consolidate finished months');
+  await runJob('consolidate', (l) => consolidateDue(l), { force });
+
+  rlog.info('step 2/4: this month\'s cohort');
+  const [c] = await q('SELECT 1 FROM cohorts WHERE month = $1 AND generated_at IS NOT NULL', [monthKey(monthStart())]);
+  if (c) rlog.info('cohort already generated, skipping', { month: monthKey(monthStart()).slice(0, 7) });
+  else await runJob('generate', (l) => generate(monthStart(), l), { force });
+
+  rlog.info('step 3/4: searches', { up_to: searches });
+  await runJob('search', (l) => search(searches, l), { force });
+
+  rlog.info('step 4/4: RDAP monitoring');
+  await runJob('monitor', (l) => monitor(l), { force });
+
+  rlog.info('cycle complete');
+  await stateSnapshot(rlog);
+  console.table(await q('SELECT * FROM arm_stats'));
+}
+
 // ---- one-off commands ------------------------------------------------------------------------
 async function runs(n = 15) {
   const rows = await q(
@@ -99,11 +128,14 @@ async function main() {
     case 'login': await login(args[0]); break;
     case 'runs': await runs(args[0] ? Number(args[0]) : undefined); break;
     case 'status': await stateSnapshot(log); console.table(await q('SELECT * FROM arm_stats')); break;
+    case 'run': await runAll(); break;
     case 'scheduler': await scheduler(); break;
     default:
       console.log(`usage: cli <command> [flags]
 
 commands:
+  run [--searches=N]     the whole cycle in the foreground: consolidate, generate (if missing),
+                         search up to N (default ${config.searchesPerRun}), monitor. Best for watching it work
   generate [YYYY-MM]     generate a month's cohort (default: current month)
   search [n]             run up to n pending searches now (default ${config.searchesPerRun})
   monitor                RDAP-check every monitored name
@@ -119,6 +151,7 @@ flags:
   -v, --verbose   debug logging (browser navigation, RDAP lookups, selectors)
   --quiet         warnings and errors only
   --headed        show the browser window (run on the host, not in Docker)
+  --fast          short pauses (3-8 s) between searches, for manual testing
   --force         run even if another job is marked as running
   --no-file       don't write data/logs/worker-YYYY-MM-DD.log`);
   }

@@ -21,7 +21,7 @@ export function CaseStudy({ domain, searches, rdap }: { domain: string; searches
     <section className="case section" aria-labelledby="case-title">
       <div className="case__head">
         <span className="badge-anecdote">Case that started it · not counted in the results below</span>
-        <h2 id="case-title"><span className="grad-text">{domain}</span>: searched, then found registered</h2>
+        <h2 id="case-title"><span className="grad-text">{domain}</span>: searched, then found it already registered (not by me)</h2>
       </div>
 
       <div className="case__flow">

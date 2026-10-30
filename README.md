@@ -54,6 +54,7 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `doc
 
 | Command | |
 |---|---|
+| `run [--searches=N]` | **The whole cycle in the foreground**: consolidate finished months → generate this month's cohort if missing → search up to `N` names (default 3) → RDAP monitor. Everything is printed live; best way to watch it work |
 | `generate [YYYY-MM]` | Generate that month's cohort (default: current): `NAMES_PER_ARM` RDAP-verified names for every group + control; every candidate is logged in `name_candidates`. Idempotent (tops up short groups) |
 | `consolidate [YYYY-MM]` | Freeze a cohort's results into an immutable snapshot (default: all finished, unconsolidated months) |
 | `search [n]` | Run up to `n` pending searches now (random 90–420 s pauses between them) |
@@ -168,32 +169,32 @@ Handy alias for the Docker route: `alias fr='docker compose run --rm worker npx 
 Do the first trial on throw-away data: **a name that was searched is exposed and can't be reused as a clean experiment name**, so adapter testing burns names. Use a tiny cohort and wipe it afterwards.
 
 ```bash
-# 1. a tiny trial cohort: 1 name per group = 7 names
-NAMES_PER_ARM=1 fr generate -v               # Docker route; on the Mac: NAMES_PER_ARM=1 npm run cli -- generate -v
-fr status                                    # 7 groups, 1 name each
+# The whole cycle in the foreground, with a visible browser (Mac route).
+# 1 name per group = 7 names, 1 real search, 3-8 s pauses, debug detail:
+cd worker
+NAMES_PER_ARM=1 npm run cli -- run --headed --fast --searches=1 -v
+#   consolidate -> generate (7 names, each RDAP-checked) -> search 1 -> monitor
+#   then look at: the log lines, data/screenshots/ and data/screenshots/errors/, and:
+npm run cli -- runs 5
 
-# 2. one real search, watching the browser (Mac route)
-npm run cli -- search 1 --headed --verbose
-#    then check: the log lines, data/screenshots/, data/screenshots/errors/ (failures), and:
-fr runs 5
+# Repeat single steps while you tune an adapter (worker/src/adapters/<registrar>.ts):
+npm run cli -- search 1 --headed --fast -v      # next pending name
+npm run cli -- monitor -v
+#   If a site blocks the automation, do that search by hand and record it:
+npm run cli -- log-manual <domain> <search_only|search_cart> "searched by hand"
 
-# 3. RDAP check of what is being monitored
-fr monitor -v
-
-# 4. repeat step 2 until every registrar/action works (search_only and search_cart), tweaking
-#    worker/src/adapters/<registrar>.ts. If a site blocks the automation, do it by hand:
-fr log-manual <domain> <search_only|search_cart> "searched by hand"
-
-# 5. wipe the trial data and start for real
+# When every registrar/action works: wipe the trial data and start for real
 docker compose exec -T db psql -U frontrunning -d frontrunning -c \
   "TRUNCATE rdap_checks, search_log, name_candidates, cohort_snapshots, domains, cohorts, job_runs RESTART IDENTITY CASCADE;"
-rm -rf data/screenshots data/logs
-fr generate                                  # the real cohort (NAMES_PER_ARM=5); or wait for the 1st
-docker compose up -d worker                  # hand over to the scheduler
+rm -rf ../data/screenshots ../data/logs
+npm run cli -- generate                         # the real cohort (NAMES_PER_ARM=5); or just wait for the 1st
+docker compose up -d worker                     # hand over to the scheduler
 docker compose logs -f worker
 ```
 
-Other commands: `fr consolidate [YYYY-MM]` (freeze a month), `fr manifest` (hash assignments + screenshots, then `ots stamp <file>`), `fr generate 2026-12` (a specific month).
+`search` on an empty database now tells you why nothing happened (no names yet → run `generate` or `run`).
+
+Other commands: `consolidate [YYYY-MM]` (freeze a month), `fr manifest` (hash assignments + screenshots, then `ots stamp <file>`), `fr generate 2026-12` (a specific month).
 
 ### Flags
 
@@ -202,6 +203,7 @@ Other commands: `fr consolidate [YYYY-MM]` (freeze a month), `fr manifest` (hash
 | `-v`, `--verbose` | debug logging: browser navigation, RDAP lookups, selector and cart checks |
 | `--quiet` | warnings and errors only |
 | `--headed` | show the browser window (Mac route only; Docker has no display) |
+| `--fast` | short 3–8 s pauses between searches instead of 90–420 s (manual testing only) |
 | `--force` | run even if another job is marked as running |
 | `--no-file` | don't write the log file |
 
