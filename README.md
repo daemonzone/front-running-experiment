@@ -501,7 +501,7 @@ The local Docker Postgres stays the default and keeps working. Neon is an explic
 | Website / worker in Docker | `docker compose up -d web` | `DB_TARGET=neon docker compose --env-file .env.neon up -d web` |
 | Website on Vercel | | set `DATABASE_URL` in the Vercel project to Neon's *pooled* string, ideally for a read-only role |
 
-`channel_binding=require` in a pasted Neon string is ignored (node-postgres can't use it); `sslmode=require` is needed and works.
+`channel_binding=require` in a pasted Neon string is ignored (node-postgres can't use it); `sslmode=verify-full` is used (explicit, as the driver recommends; Neon's certificates are publicly trusted).
 
 **Transferring the schema and the data** from the local database to an empty Neon database (use the same major Postgres version, 17):
 
