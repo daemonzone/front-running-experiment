@@ -22,9 +22,9 @@ Assignment is random but balanced (least-filled arm first, ties broken randomly)
 ## Repository layout
 
 ```
-front-runner-experiment/        <- the single git repository
-├── front-running-website/      Next.js read-only UI (Dockerfile)
-├── front-running-worker/       async worker: cron, Playwright searches, RDAP, consolidation (Dockerfile)
+front-running-experiment/       <- the single git repository
+├── web/                        Next.js read-only UI (Dockerfile)
+├── worker/                     async worker: cron, Playwright searches, RDAP, consolidation (Dockerfile)
 ├── db/schema.sql               PostgreSQL / Neon schema
 ├── docker-compose.yml          db + website + worker
 ├── data/                       screenshots, manifests, saved sessions (git-ignored)
@@ -50,7 +50,7 @@ docker compose logs -f worker
 
 ## CLI
 
-Run from `front-running-worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `docker compose run --rm worker npx tsx src/cli.ts <cmd>`.
+Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `docker compose run --rm worker npx tsx src/cli.ts <cmd>`.
 
 | Command | |
 |---|---|
@@ -82,13 +82,13 @@ A `search_cart` whose cart add can't be confirmed is logged as `error` and retri
 ## Adding a registrar
 
 - **Search-only, no code:** `INSERT INTO registrars (slug, name, adapter_key, search_url_template) VALUES ('porkbun','Porkbun','generic','https://porkbun.com/checkout/search?q={domain}');` The next `generate` includes it in the balancing. Check the page screenshot to make sure the URL really runs the search.
-- **Cart support or a search that needs interaction:** needs a custom adapter. Add `front-running-worker/src/adapters/<name>.ts` (copy `namecheap.ts`, which is just selectors and the cart URL), register it in `adapters/index.ts`, and use `adapter_key = '<name>'`, `supports_cart = TRUE`.
+- **Cart support or a search that needs interaction:** needs a custom adapter. Add `worker/src/adapters/<name>.ts` (copy `namecheap.ts`, which is just selectors and the cart URL), register it in `adapters/index.ts`, and use `adapter_key = '<name>'`, `supports_cart = TRUE`.
 
 ## Adapters (read this)
 
-The adapters in `front-running-worker/src/adapters` were written **without being run against the live sites** (their markup changes often and may be behind bot protection). Before trusting the data:
+The adapters in `worker/src/adapters` were written **without being run against the live sites** (their markup changes often and may be behind bot protection). Before trusting the data:
 
-1. Run `search 1` with `HEADLESS=false` on the host (`cd front-running-worker && npm i && npx playwright install chromium && HEADLESS=false npm run cli -- search 1`) and watch what happens.
+1. Run `search 1` with `HEADLESS=false` on the host (`cd worker && npm i && npx playwright install chromium && HEADLESS=false npm run cli -- search 1`) and watch what happens.
 2. Check `data/screenshots/` and `search_log.notes`/`cart_confirmed`. Fix the regexes/selectors in the adapter if needed.
 3. Headless Chromium in Docker is easier for sites to flag than a headed browser on your machine. If a site challenges you, do that search by hand and use `log-manual`. There is deliberately no CAPTCHA solving, fingerprint spoofing or proxy rotation here, and the pacing is slow on purpose (a few searches a day). Check each registrar's ToS.
 4. Registrars with `requires_login = TRUE` reuse a session saved with `login <slug>` on the host (shared with the container through `./data`).
@@ -105,7 +105,7 @@ By default carts are left abandoned like a real visitor would (`CLEAR_CART=true`
 
 ## Web UI
 
-`http://localhost:10100`: arm results, registered names with delay since search, per-domain timeline, CSV exports (`/api/export?table=domains|search_log|rdap_checks`). Read-only, no login, no write endpoints. To publish it, deploy `front-running-website/` anywhere (Vercel, etc.) with `DATABASE_URL` pointing to Neon (ideally a read-only role).
+`http://localhost:10100`: arm results, registered names with delay since search, per-domain timeline, CSV exports (`/api/export?table=domains|search_log|rdap_checks`). Read-only, no login, no write endpoints. To publish it, deploy `web/` anywhere (Vercel, etc.) with `DATABASE_URL` pointing to Neon (ideally a read-only role).
 
 ## Where to run the browser
 
@@ -115,11 +115,11 @@ What matters is that the exposure looks like what you normally do: a headed Chro
 2. **An always-on home machine** (mini PC, Mac mini, NAS) running `docker compose up -d` with `HEADLESS=false`; the worker container uses a virtual display (Xvfb). Same residential IP, no need to keep your laptop on.
 3. **A VPS** only as a last resort; expect challenges and a different network fingerprint than your own searches.
 
-Keep the same egress IP for the whole experiment (it is logged per search), and put `front-running-website/` on Vercel with Neon if you want it public.
+Keep the same egress IP for the whole experiment (it is logged per search), and put `web/` on Vercel with Neon if you want it public.
 
 ## Site pages
 
-Edit `front-running-website/src/lib/site.ts` (author, contact, start date, repo URL) before publishing. `/about` is the intro, `/method` the pre-registered method, `/example-report` a clearly labelled fake-data report showing how results are presented (registrars anonymised as A/B/C).
+Edit `web/src/lib/site.ts` (author, contact, start date, repo URL) before publishing. `/about` is the intro, `/method` the pre-registered method, `/example-report` a clearly labelled fake-data report showing how results are presented (registrars anonymised as A/B/C).
 
 ## Monthly cycle
 
