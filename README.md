@@ -38,7 +38,7 @@ docker compose logs -f worker
 
 ## CLI
 
-Run from `worker/` (needs `DATABASE_URL`, default `localhost:5432`) or via `docker compose run --rm worker npx tsx src/cli.ts <cmd>`.
+Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `docker compose run --rm worker npx tsx src/cli.ts <cmd>`.
 
 | Command | |
 |---|---|

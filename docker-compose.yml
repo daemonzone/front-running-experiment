@@ -5,7 +5,7 @@ services:
       POSTGRES_USER: frontrunning
       POSTGRES_PASSWORD: frontrunning
       POSTGRES_DB: frontrunning
-    ports: ["5432:5432"]
+    ports: ["15432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro

@@ -1,7 +1,7 @@
 const int = (v: string | undefined, d: number) => (v && !Number.isNaN(Number(v)) ? Number(v) : d);
 
 export const config = {
-  databaseUrl: process.env.DATABASE_URL ?? 'postgres://frontrunning:frontrunning@localhost:5432/frontrunning',
+  databaseUrl: process.env.DATABASE_URL ?? 'postgres://frontrunning:frontrunning@localhost:15432/frontrunning',
   dataDir: process.env.DATA_DIR ?? './data',
   headless: (process.env.HEADLESS ?? 'true') !== 'false',
   locale: process.env.BROWSER_LOCALE ?? 'en-US',
