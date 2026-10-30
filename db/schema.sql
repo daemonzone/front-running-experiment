@@ -17,6 +17,11 @@ DO $$ BEGIN
   CREATE TYPE search_outcome AS ENUM ('ok', 'error', 'skipped');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DO $$ BEGIN
+  -- Result of the RDAP check done on every generated candidate name.
+  CREATE TYPE candidate_outcome AS ENUM ('available', 'already_registered', 'inconclusive', 'duplicate_label');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- ---------------------------------------------------------------------------
 -- Registrars. adapter_key maps to worker/src/adapters/*.ts.
 -- 'generic' needs no code: it just opens search_url_template ({domain} is replaced)
@@ -43,6 +48,17 @@ INSERT INTO registrars (slug, name, adapter_key, search_url_template, supports_c
 ON CONFLICT (slug) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
+-- Cohorts: one per calendar month (UTC). Generated on the 1st, consolidated on the next 1st.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cohorts (
+  month              DATE PRIMARY KEY CHECK (date_trunc('month', month) = month),
+  names_per_arm      SMALLINT NOT NULL,
+  generated_at       TIMESTAMPTZ,            -- set once every arm quota is filled
+  assignments_sha256 TEXT,                   -- hash of the final (name, action, registrar) list: the pre-registration
+  consolidated_at    TIMESTAMPTZ
+);
+
+-- ---------------------------------------------------------------------------
 -- Domains: every generated name. The experiment arm is assigned at generation.
 --   assigned_action = no_search  => assigned_registrar_id IS NULL (control group)
 --   otherwise                    => assigned_registrar_id is the registrar searched on
@@ -52,7 +68,7 @@ CREATE TABLE IF NOT EXISTS domains (
   name                  TEXT NOT NULL UNIQUE,            -- full name, lower case, e.g. kleoshq.com
   label                 TEXT NOT NULL,                   -- part before the TLD
   tld                   TEXT NOT NULL,
-  batch                 TEXT NOT NULL,                   -- generation batch id (pre-registration unit)
+  cohort                DATE NOT NULL REFERENCES cohorts(month),
   assigned_action       experiment_action NOT NULL,
   assigned_registrar_id SMALLINT REFERENCES registrars(id),
   status                domain_status NOT NULL DEFAULT 'pending_search',
@@ -72,7 +88,7 @@ CREATE TABLE IF NOT EXISTS domains (
 );
 CREATE INDEX IF NOT EXISTS domains_status_idx      ON domains (status);
 CREATE INDEX IF NOT EXISTS domains_arm_idx         ON domains (assigned_registrar_id, assigned_action);
-CREATE INDEX IF NOT EXISTS domains_batch_idx       ON domains (batch);
+CREATE INDEX IF NOT EXISTS domains_cohort_idx      ON domains (cohort);
 
 -- ---------------------------------------------------------------------------
 -- Search log: one row per experimental action performed (including no_search,
@@ -100,6 +116,41 @@ CREATE TABLE IF NOT EXISTS search_log (
 CREATE INDEX IF NOT EXISTS search_log_domain_idx ON search_log (domain_id);
 
 -- ---------------------------------------------------------------------------
+-- Every candidate name that was generated and RDAP-checked, accepted or not.
+-- Accepted candidates link to their domains row (which holds the group assignment).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS name_candidates (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  cohort      DATE NOT NULL REFERENCES cohorts(month),
+  name        TEXT NOT NULL,
+  label       TEXT NOT NULL,
+  tld         TEXT NOT NULL,
+  outcome     candidate_outcome NOT NULL,
+  http_status INTEGER,
+  rdap_url    TEXT,                       -- public URL anyone can open to verify the result
+  checked_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  error       TEXT,
+  domain_id   BIGINT REFERENCES domains(id)   -- set when the candidate was accepted
+);
+CREATE INDEX IF NOT EXISTS name_candidates_cohort_idx ON name_candidates (cohort, id);
+
+-- ---------------------------------------------------------------------------
+-- Immutable month-end snapshots (taken on the 1st for the previous month).
+-- Names keep being monitored for the whole window, so live numbers can still grow later.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cohort_snapshots (
+  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  cohort     DATE NOT NULL REFERENCES cohorts(month),
+  taken_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  total_names INTEGER NOT NULL,
+  total_registered INTEGER NOT NULL,
+  arms       JSONB NOT NULL,              -- [{registrar, action, names, registered, monitoring}]
+  registered JSONB NOT NULL,              -- [{name, registrar, action, delay_days, registered_via}]
+  sha256     TEXT NOT NULL,               -- hash of arms+registered, can be timestamped
+  UNIQUE (cohort)
+);
+
+-- ---------------------------------------------------------------------------
 -- RDAP observations (append-only). One row per check.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS rdap_checks (
@@ -121,8 +172,10 @@ CREATE INDEX IF NOT EXISTS rdap_checks_domain_idx ON rdap_checks (domain_id, che
 -- ---------------------------------------------------------------------------
 -- Reporting view: per-arm results used by the UI.
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE VIEW arm_stats AS
+DROP VIEW IF EXISTS arm_stats;
+CREATE VIEW arm_stats AS
 SELECT
+  d.cohort                                                     AS cohort,
   COALESCE(r.name, '(none — control)')                         AS registrar,
   d.assigned_action                                            AS action,
   COUNT(*)                                                     AS domains,
@@ -131,5 +184,5 @@ SELECT
   ROUND(100.0 * COUNT(*) FILTER (WHERE d.status = 'registered') / NULLIF(COUNT(*),0), 1) AS registered_pct
 FROM domains d
 LEFT JOIN registrars r ON r.id = d.assigned_registrar_id
-GROUP BY r.name, d.assigned_action
-ORDER BY r.name NULLS LAST, d.assigned_action;
+GROUP BY d.cohort, r.id, r.name, d.assigned_action
+ORDER BY d.cohort, r.id NULLS LAST, d.assigned_action;

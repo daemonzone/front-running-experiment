@@ -1,0 +1,21 @@
+{
+  "name": "front-running-worker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "cli": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "node-cron": "4.6.0",
+    "pg": "8.23.1",
+    "playwright": "1.64.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15",
+    "typescript": "^5.6.0"
+  }
+}
