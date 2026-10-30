@@ -91,16 +91,17 @@ export default async function Generation({ searchParams }: { searchParams: Promi
             const preSearched = exposure?.before_names ?? [];
             const before = hashedAt && (!firstSearch || hashedAt < firstSearch);
             const matches = currentSha === cohort.assignments_sha256;
+            const clean = Boolean(before) && matches && preSearched.length === 0;
             return (
-              <div className={`notice ${before && matches && preSearched.length === 0 ? '' : 'notice--warn'}`}>
-                <b>Assignment fingerprint.</b> A SHA-256 hash of this month&apos;s list of which name goes to which group. If even one line changes, the hash changes, so it proves the list was fixed:
-                <div><code style={{ wordBreak: 'break-all' }}>{cohort.assignments_sha256}</code></div>
-                <p className="fp-line">
-                  {hashedAt ? <>Computed {fmtDate(hashedAt, true)}. </> : null}
-                  {before
-                    ? <b>✓ Computed before the first search of this cohort{firstSearch ? ` (${fmtDate(firstSearch, true)})` : ' (none yet)'}.</b>
-                    : <b>⚠ Computed after searches began{firstSearch ? ` (first search ${fmtDate(firstSearch, true)})` : ''}: it documents the list as it stands, but it is not a pre-registration.</b>}
-                </p>
+              <div className={`notice ${clean ? '' : 'notice--warn'}`}>
+                <b>Assignment fingerprint.</b> A SHA-256 hash of this month&apos;s list of which name goes to which group. If even one line changes, the hash changes, so it proves the list was fixed:{' '}
+                <code style={{ wordBreak: 'break-all' }}>{cohort.assignments_sha256}</code>
+                {/* Warnings only when something is wrong; the normal case shows nothing extra. */}
+                {!before && (
+                  <p className="fp-line">
+                    <b>⚠ Computed {hashedAt ? fmtDate(hashedAt, true) : ''} after searches began{firstSearch ? ` (first search ${fmtDate(firstSearch, true)})` : ''}</b>: it documents the list as it stands, but it is not a pre-registration.
+                  </p>
+                )}
                 {preSearched.length > 0 && (
                   <p className="fp-line">
                     <b>⚠ {preSearched.length} name{preSearched.length > 1 ? 's were' : ' was'} already searched before this cohort was generated</b> ({preSearched.join(', ')}): not covered by the pre-registration.
@@ -108,11 +109,11 @@ export default async function Generation({ searchParams }: { searchParams: Promi
                 )}
                 {matches ? (
                   <p className="fp-line">
-                    <b>✓ Matches the current list.</b> To check it yourself, download <a href={`/api/export?table=assignments&month=${sel}`}>the list</a> and run <code>shasum -a 256 assignments-{sel}.txt</code>: the result must equal the hash above.
+                    To check it yourself, download <a href={`/api/export?table=assignments&month=${sel}`}>the list</a> and run <code>shasum -a 256 assignments-{sel}.txt</code>: the result must equal the hash above.
                   </p>
                 ) : (
                   <p className="fp-line">
-                    <b>⚠ The list was edited after this fingerprint was computed</b>, so it no longer matches the current names (the current list hashes to <code style={{ wordBreak: 'break-all' }}>{currentSha}</code>; <a href={`/api/export?table=assignments&month=${sel}`}>download it</a> to check). The original list can&apos;t be reproduced exactly: a name was replaced and another removed after generation.
+                    <b>⚠ The list was edited after this fingerprint was computed</b>, so it no longer matches the current names (the current list hashes to <code style={{ wordBreak: 'break-all' }}>{currentSha}</code>; <a href={`/api/export?table=assignments&month=${sel}`}>download it</a> to check).
                   </p>
                 )}
               </div>
