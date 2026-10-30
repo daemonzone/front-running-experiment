@@ -277,3 +277,12 @@ tbody tr:hover td { background: color-mix(in srgb, var(--brand-tint) 55%, var(--
   .case__line--arrow::after { display: none; }
 }
 .via { margin-top: 12px; font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+
+/* ---------- Info popover ---------- */
+.infobtn { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 6px; padding: 0; vertical-align: middle; border-radius: 99px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--brand); cursor: pointer; }
+.infobtn:hover, .infobtn[aria-expanded="true"] { background: var(--brand-tint); border-color: var(--brand); }
+.infopop { position: fixed; z-index: 60; width: 320px; max-width: calc(100vw - 24px); padding: 12px 14px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 12px 34px rgba(0,0,0,.22); font-size: 13.5px; line-height: 1.5; }
+.infopop > div { color: var(--ink-2); }
+.infopop b { color: var(--ink); }
+.infopop__title { color: var(--ink) !important; font-weight: 700; margin-bottom: 4px; }
+.delay { font-variant-numeric: tabular-nums; white-space: nowrap; cursor: help; }

@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { StatusPill } from '@/components/Pill';
+import { InfoPop } from '@/components/InfoPop';
 import { MonthPicker } from '@/components/MonthPicker';
 import { q } from '@/lib/db';
 import { cohortFilter, listMonths, monthShort, resolveMonth } from '@/lib/months';
-import { actionLabel, fmtDate, fmtSpan, type Action } from '@/lib/viz';
+import { actionLabel, fmtDateTime, fmtDelay, fmtSpan, fmtWhen, type Action } from '@/lib/viz';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,8 +28,14 @@ export default async function Domains({ searchParams }: { searchParams: Promise<
 
   const rows = await q(
     `SELECT d.name, d.status, d.assigned_action AS action, r.name AS registrar, d.searched_at, to_char(d.cohort, 'YYYY-MM') AS cohort,
-            CASE WHEN d.status = 'registered' THEN EXTRACT(EPOCH FROM (COALESCE(d.rdap_created_at, d.registered_detected_at) - d.searched_at)) / 86400 END AS days
+            CASE WHEN d.status = 'registered' THEN EXTRACT(EPOCH FROM (COALESCE(d.rdap_created_at, d.registered_detected_at) - d.searched_at)) / 86400 END AS days,
+            d.rdap_registrar_name, d.rdap_registrar_iana_id AS iana, d.rdap_created_at, rc.nameservers, rc.last_changed
        FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id
+       LEFT JOIN LATERAL (
+               SELECT c.nameservers,
+                      (SELECT e->>'eventDate' FROM jsonb_array_elements(c.raw->'events') e WHERE e->>'eventAction' = 'last changed' LIMIT 1) AS last_changed
+                 FROM rdap_checks c WHERE c.domain_id = d.id AND c.registered ORDER BY c.checked_at DESC LIMIT 1
+             ) rc ON TRUE
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY d.generated_at DESC, d.id DESC LIMIT 1000`, params);
 
@@ -66,16 +73,21 @@ export default async function Domains({ searchParams }: { searchParams: Promise<
       <div className="card card--flush table-wrap">
         {rows.length === 0 ? <p className="empty">No names match these filters.</p> : (
           <table>
-            <thead><tr><th>Domain</th><th>Group</th><th>Action</th><th>Status</th><th>Searched</th><th>Timespan</th><th>Cohort</th></tr></thead>
+            <thead><tr><th>Domain</th><th>Group</th><th>Action</th><th>Status</th><th>Searched (UTC)</th><th title="days hh:mm, or h:mm under a day">Delay</th><th>Cohort</th></tr></thead>
             <tbody>
               {rows.map((d: any) => (
                 <tr key={d.name}>
                   <td><Link href={`/domains/${d.name}`}><b>{d.name}</b></Link></td>
                   <td>{d.registrar ?? 'Control'}</td>
                   <td>{actionLabel[d.action as Action]}</td>
-                  <td><StatusPill status={d.status} /></td>
-                  <td>{fmtDate(d.searched_at)}</td>
-                  <td>{d.days != null ? `registered ${fmtSpan(d.days)}` : <span className="muted">—</span>}</td>
+                  <td>
+                    <StatusPill status={d.status} />
+                    {d.status === 'registered' && (
+                      <InfoPop info={{ registrar: d.rdap_registrar_name, iana: d.iana, nameservers: d.nameservers ?? [], registeredAt: d.rdap_created_at ? fmtWhen(d.rdap_created_at) : null, lastChanged: d.last_changed ? fmtWhen(d.last_changed) : null }} />
+                    )}
+                  </td>
+                  <td>{fmtDateTime(d.searched_at)}</td>
+                  <td className="delay" title={d.days != null ? `registered ${fmtSpan(d.days)}` : undefined}>{d.days != null ? fmtDelay(d.days) : <span className="muted">—</span>}</td>
                   <td className="muted"><Link href={`/generation?month=${d.cohort}`}>{monthShort(d.cohort)}</Link></td>
                 </tr>
               ))}

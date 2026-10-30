@@ -2,7 +2,7 @@ import { ArmBars } from '@/components/ArmBars';
 import { CumulativeChart } from '@/components/CumulativeChart';
 import { StatTile } from '@/components/StatTile';
 import { fisherOneSided } from '@/lib/stats';
-import { fmtSpan } from '@/lib/viz';
+import { fmtDelay, fmtSpan } from '@/lib/viz';
 import type { ArmDatum, SeriesDatum } from '@/lib/viz';
 
 // ILLUSTRATIVE FAKE DATA — nothing on this page is a real result.
@@ -82,10 +82,10 @@ export default function Example() {
         <div className="section__head"><h2>Registered names (example)</h2></div>
         <div className="card card--flush table-wrap">
           <table>
-            <thead><tr><th>Domain</th><th>Searched on</th><th>Action</th><th>Timespan</th><th>Registered via</th></tr></thead>
+            <thead><tr><th>Domain</th><th>Searched on</th><th>Action</th><th title="days hh:mm, or h:mm under a day">Delay</th><th>Registered via</th></tr></thead>
             <tbody>
               {examples.map((e) => (
-                <tr key={e.d}><td><b>{e.d}</b></td><td>{e.reg}</td><td>{e.action}</td><td>registered {fmtSpan(e.delay)}</td><td>{e.via}</td></tr>
+                <tr key={e.d}><td><b>{e.d}</b></td><td>{e.reg}</td><td>{e.action}</td><td className="delay" title={`registered ${fmtSpan(e.delay)}`}>{fmtDelay(e.delay)}</td><td>{e.via}</td></tr>
               ))}
             </tbody>
           </table>

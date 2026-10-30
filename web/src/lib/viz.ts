@@ -65,3 +65,30 @@ export function fmtSpan(days: number | null | undefined): string {
   else { n = Math.round(abs); unit = 'day'; }
   return `${n} ${unit}${n === 1 ? '' : 's'} ${d < 0 ? 'earlier' : 'later'}`;
 }
+
+/** 2026-10-30 15:12 (UTC, no suffix: the column header says UTC). */
+export const fmtDateTime = (d: Date | string | null | undefined) =>
+  d ? new Date(d).toISOString().replace('T', ' ').slice(0, 16) : '—';
+
+/** Oct 30, 07:37 UTC */
+export const fmtWhen = (d: Date | string | null | undefined) => {
+  if (!d) return '—';
+  const iso = new Date(d).toISOString();
+  return `${new Date(d).toLocaleString('en', { month: 'short', day: 'numeric', timeZone: 'UTC' })}, ${iso.slice(11, 16)} UTC`;
+};
+
+/**
+ * Compact delay between the search and the registration: "6:49" (h:mm), "8d 02:15" (days + hh:mm),
+ * with a real minus sign when the registration predates the search.
+ */
+export function fmtDelay(days: number | null | undefined): string {
+  if (days == null || Number.isNaN(Number(days))) return '—';
+  const d = Number(days);
+  const totalMin = Math.round(Math.abs(d) * 1440);
+  const dd = Math.floor(totalMin / 1440);
+  const h = Math.floor((totalMin % 1440) / 60);
+  const m = totalMin % 60;
+  const mm = String(m).padStart(2, '0');
+  const sign = d < 0 ? '\u2212' : '';
+  return dd > 0 ? `${sign}${dd}d ${String(h).padStart(2, '0')}:${mm}` : `${sign}${h}:${mm}`;
+}

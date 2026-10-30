@@ -4,7 +4,7 @@ import { StatusPill } from '@/components/Pill';
 import { StatTile } from '@/components/StatTile';
 import { q } from '@/lib/db';
 import { monthLabel } from '@/lib/months';
-import { actionLabel, fmtDate, fmtSpan, type Action } from '@/lib/viz';
+import { actionLabel, fmtDate, fmtDelay, fmtSpan, type Action } from '@/lib/viz';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,9 +37,9 @@ export default async function DomainPage({ params }: { params: Promise<{ name: s
 
       <div className="detail-grid" style={{ marginTop: 0 }}>
         <StatTile label="Group" value={d.registrar ?? 'Control'} hint={actionLabel[d.assigned_action as Action]} />
-        <StatTile label="Searched" value={fmtDate(d.searched_at)} hint={d.searched_at ? 'exposure start' : 'not yet'} />
-        <StatTile label="Registered (RDAP)" value={d.status === 'registered' ? fmtDate(d.rdap_created_at ?? d.registered_detected_at) : '—'} hint={d.rdap_registrar_name ? `via ${d.rdap_registrar_name}` : undefined} />
-        <StatTile label="Timespan" value={d.status === 'registered' ? fmtSpan(d.days) : '—'} hint="between the search and the registration" />
+        <StatTile label="Searched" value={fmtDate(d.searched_at)} hint={d.searched_at ? `${new Date(d.searched_at).toISOString().slice(11, 16)} UTC · exposure start` : 'not yet'} />
+        <StatTile label="Registered (RDAP)" value={d.status === 'registered' ? fmtDate(d.rdap_created_at ?? d.registered_detected_at) : '—'} hint={d.status === 'registered' ? `${new Date(d.rdap_created_at ?? d.registered_detected_at).toISOString().slice(11, 16)} UTC${d.rdap_registrar_name ? ` · via ${d.rdap_registrar_name}` : ''}` : undefined} />
+        <StatTile label="Delay" value={d.status === 'registered' ? fmtDelay(d.days) : '—'} hint={d.status === 'registered' ? `registered ${fmtSpan(d.days)}` : 'search → registration'} />
       </div>
 
       <section className="section">
