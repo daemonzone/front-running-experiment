@@ -10,14 +10,14 @@ import { generate } from './jobs/generate.js';
 import { manifest } from './jobs/manifest.js';
 import { monitor } from './jobs/monitor.js';
 import { abortOrphanedRuns, runJob, type Trigger } from './jobs/runner.js';
-import { login, logManual, search } from './jobs/search.js';
+import { login, logManual, parseAt, search, todo } from './jobs/search.js';
 
 // ---- command line -------------------------------------------------------------------------------
 // Both styles work:   cli.ts generate 2026-11      cli.ts --generate 202611      cli.ts --generate=2026-11
 // Options:  --verbose/-v  --quiet  --headed  --fast  --force  --no-file  --searches=N  --check
 //           --chrome (use the installed Google Chrome, headed)
 //           --registrar=<slug> --action=<search_only|search_cart> --domain=<name> --dry-run   (for search)
-const COMMANDS = ['generate', 'search', 'monitor', 'consolidate', 'manifest', 'run', 'runs', 'status', 'scheduler', 'login', 'log-manual', 'words', 'requeue'];
+const COMMANDS = ['generate', 'search', 'monitor', 'consolidate', 'manifest', 'run', 'runs', 'status', 'scheduler', 'login', 'log-manual', 'words', 'requeue', 'todo'];
 const raw = process.argv.slice(2);
 const flags = new Set(raw.filter((a) => a.startsWith('-')));
 const positional = raw.filter((a) => !a.startsWith('-'));
@@ -174,7 +174,8 @@ async function main() {
     })); break;
     case 'monitor': await once('monitor', (l) => monitor(l)); break;
     case 'manifest': await once('manifest', (l) => manifest(l)); break;
-    case 'log-manual': await once('log-manual', (l) => logManual(args[0], args[1], args.slice(2).join(' ') || undefined, l)); break;
+    case 'log-manual': await once('log-manual', (l) => logManual(args[0], args[1], args.slice(2).join(' ') || undefined, l, { at: parseAt(opt('at')), screenshot: opt('screenshot') })); break;
+    case 'todo': await once('todo', (l) => todo(l, opt('registrar'))); break;
     case 'requeue': await once('requeue', (l) => requeue(args[0], l)); break;
     case 'login': await login(args[0]); break;
     case 'runs': await runs(args[0] ? Number(args[0]) : undefined); break;
@@ -195,7 +196,8 @@ commands:
   monitor                RDAP-check every monitored name
   consolidate [YYYY-MM]  freeze finished months into snapshots
   manifest               hash assignments + screenshots (then: ots stamp <file>)
-  log-manual <domain> <action> [notes]   record a search you did by hand
+  todo [--registrar=<slug>]   checklist of names to search by hand, with the commands to record them
+  log-manual <domain> <action> [notes] [--at=HH:MM|ISO] [--screenshot=<file>]   record a search you did by hand
   requeue <domain>       put a failed name back in the queue (its failed attempts stop counting)
   login <registrar>      save a browser session (run on the host)
   runs [n]               last n job runs

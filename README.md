@@ -62,7 +62,8 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `doc
 | `monitor` | RDAP-check everything being monitored and flag newly registered names |
 | `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (only for registrars with `requires_login`) |
 | `requeue <domain>` | Put a `failed` (or stuck pending) name back in the queue and void its failed attempts, so `search` will try it again from attempt 1 |
-| `log-manual <domain> <action> [notes]` | Record a search you did by hand when an adapter breaks. The action must match the assignment |
+| `todo [--registrar=<slug>]` | Checklist of the names still to search by hand, what to do for each, and the `log-manual` command to record it |
+| `log-manual <domain> <action> [notes] [--at=HH:MM\|ISO] [--screenshot=<file>]` | Record a search you did by hand. The action must match the assignment; `--at` is when you searched (default now); `--screenshot` is copied into `data/screenshots/` and hashed |
 | `manifest` | Write `data/manifests/manifest-<ts>.txt`: hash of the arm assignments (the pre-registration) + SHA-256 of every screenshot. Then run `ots stamp <file>` |
 | `runs [n]` | Last `n` job runs (what ran, when, how it ended, counters) |
 | `status` | Per-arm table |
@@ -310,6 +311,34 @@ A *LaunchAgent* (not a daemon) is needed, because a visible browser requires you
 ```
 
 Stop it with `launchctl unload ~/Library/LaunchAgents/com.frontrunning.worker.plist`. The worker's own logs are in `data/logs/` either way.
+
+## Searching by hand (when a registrar blocks the automation)
+
+GoDaddy answers "Access Denied" to the automated browser, and nothing here gets around that. Those names are searched **by you, in your normal Chrome**, and recorded.
+
+```bash
+cd worker
+npm run cli -- todo --registrar=godaddy        # the checklist: each name, what to do, the command to record it
+```
+
+For each name on the list:
+
+1. Open `https://www.godaddy.com/domains` in your normal Chrome, click the search box, **type the name** and press Search, as you always do.
+2. **`search_only`**: stop at the results page. **`search_cart`**: also click *Add to cart* for that name.
+3. Take a screenshot with the **address bar visible** (⌘⇧4, space, click the window). Optional, but it is your evidence.
+4. Record it straight away, with the time you searched:
+
+```bash
+npm run cli -- log-manual irisis.net search_cart "searched by hand" --at=19:46 --screenshot=~/Desktop/irisis.net.png
+```
+
+`--at` takes `HH:MM` (today, your local time) or an ISO date-time (`2026-10-31T09:30` local, or with a `Z` for UTC). It can't be in the future. Without `--screenshot` the record still counts, just without a hash.
+
+Rules that keep the data honest:
+- Do **exactly** the assigned action: a `search_only` name must not be added to the cart.
+- Use the same home connection as the automated searches, one name at a time with a pause between them, like the automated runs.
+- Only `pending` or `failed` names can be recorded, and the action has to match the assignment. A name that is already monitoring can't be recorded twice.
+- The name then enters its 90-day monitoring window from the time you give, exactly like an automated search. The site marks these rows as *manual* in the name's timeline.
 
 ## Running the worker manually
 

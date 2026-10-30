@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
 import { getAdapter } from '../adapters/index.js';
@@ -267,16 +267,69 @@ export async function login(slug: string): Promise<void> {
   createLogger('login').info('session saved', { file: statePath(slug) });
 }
 
-/** Record a search you performed by hand (fallback when an adapter breaks). */
-export async function logManual(domain: string, action: string, notes?: string, log: Logger = createLogger('log-manual')): Promise<Record<string, unknown>> {
-  const [d] = await q<DomainRow>('SELECT * FROM domains WHERE name = $1', [domain.toLowerCase()]);
+/** "now", an ISO date-time ("2026-10-30T19:46:00Z", or without Z = your local time), or "HH:MM" (today, local time). */
+export function parseAt(arg?: string): Date {
+  if (!arg || arg === 'now') return new Date();
+  const hm = /^(\d{1,2}):(\d{2})$/.exec(arg);
+  let d: Date;
+  if (hm) { d = new Date(); d.setHours(Number(hm[1]), Number(hm[2]), 0, 0); }
+  else d = new Date(arg);
+  if (Number.isNaN(d.getTime())) throw new Error(`--at must be "now", HH:MM or an ISO date-time, got "${arg}"`);
+  if (d.getTime() > Date.now() + 60_000) throw new Error(`--at is in the future (${d.toISOString()})`);
+  return d;
+}
+
+/** Record a search you performed by hand (for registrars that block the automated browser). */
+export async function logManual(
+  domain: string, action: string, notes?: string, log: Logger = createLogger('log-manual'),
+  opts: { at?: Date; screenshot?: string } = {},
+): Promise<Record<string, unknown>> {
+  const [d] = await q<DomainRow & { status: string }>('SELECT *, status::text AS status FROM domains WHERE name = $1', [domain.toLowerCase()]);
   if (!d) throw new Error(`unknown domain ${domain}`);
   if (action !== d.assigned_action) throw new Error(`${domain} is assigned to ${d.assigned_action}, not ${action}`);
+  if (d.status !== 'pending_search' && d.status !== 'failed') throw new Error(`${domain} is already ${d.status}; only pending or failed names can be recorded`);
+  const at = opts.at ?? new Date();
+
+  let shotPath: string | null = null;
+  let shotSha: string | null = null;
+  if (opts.screenshot) {
+    const src = opts.screenshot.replace(/^~(?=\/)/, process.env.HOME ?? '~');
+    if (!existsSync(src)) throw new Error(`screenshot not found: ${src}`);
+    const buf = await readFile(src);
+    shotSha = createHash('sha256').update(buf).digest('hex');
+    const dir = path.join(config.dataDir, 'screenshots');
+    await mkdir(dir, { recursive: true });
+    shotPath = path.join(dir, `${d.name}-${action}-manual-${at.getTime()}${path.extname(src) || '.png'}`);
+    await writeFile(shotPath, buf);
+  }
+
   await q(
-    `INSERT INTO search_log (domain_id, registrar_id, action, outcome, finished_at, manual, notes)
-     VALUES ($1,$2,$3,'ok', now(), TRUE, $4)`, [d.id, d.assigned_registrar_id, action, notes ?? null]);
-  await q(`UPDATE domains SET status = 'monitoring', searched_at = now(),
-                  monitor_until = now() + make_interval(days => $2) WHERE id = $1`, [d.id, config.monitorDays]);
-  log.info('manual search recorded, now monitoring', { domain, action });
-  return { domain, action };
+    `INSERT INTO search_log (domain_id, registrar_id, action, outcome, started_at, finished_at, manual, notes, screenshot_path, screenshot_sha256)
+     VALUES ($1,$2,$3,'ok', $4, $4, TRUE, $5, $6, $7)`,
+    [d.id, d.assigned_registrar_id, action, at, notes ?? null, shotPath, shotSha]);
+  await q(`UPDATE domains SET status = 'monitoring', searched_at = $2, monitor_until = $2::timestamptz + make_interval(days => $3) WHERE id = $1`,
+    [d.id, at, config.monitorDays]);
+  log.info('manual search recorded, now monitoring', { domain, action, searched_at: at.toISOString(), screenshot: shotPath ?? 'none' });
+  return { domain, action, searched_at: at.toISOString() };
+}
+
+/** The checklist for searching by hand: pending names, what to do for each, and the command to record it. */
+export async function todo(log: Logger, registrar?: string): Promise<Record<string, unknown>> {
+  const rows = await q<{ name: string; action: string; slug: string; name_r: string }>(
+    `SELECT d.name, d.assigned_action::text AS action, r.slug, r.name AS name_r
+       FROM domains d JOIN registrars r ON r.id = d.assigned_registrar_id
+      WHERE d.status IN ('pending_search', 'failed') AND ($1::text IS NULL OR r.slug = $1)
+      ORDER BY r.slug, d.assigned_action, d.name`, [registrar ?? null]);
+  const what: Record<string, string> = { search_only: 'search it (do NOT add to cart)', search_cart: 'search it AND add it to the cart' };
+  console.log(`\n${rows.length} name(s) to search by hand${registrar ? ` on ${registrar}` : ''}:\n`);
+  for (const r of rows) {
+    console.log(`  ${r.name.padEnd(22)} ${r.name_r.padEnd(10)} ${what[r.action]}`);
+  }
+  console.log('\nAfter each one, record it (--at = the time you searched, --screenshot is optional):\n');
+  for (const r of rows) {
+    console.log(`  npm run cli -- log-manual ${r.name} ${r.action} "searched by hand" --at=HH:MM --screenshot=~/Desktop/${r.name}.png`);
+  }
+  console.log('');
+  log.info('checklist printed', { names: rows.length });
+  return { names: rows.length };
 }
