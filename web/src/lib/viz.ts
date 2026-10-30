@@ -1,5 +1,6 @@
 // Shared helpers for the charts. Colors follow the ENTITY (registrar), never its rank,
-// so filtering a group out never repaints the others. Slots 1-3 of the validated palette.
+// so filtering a group out never repaints the others. Violet / amber / pink validate all-pairs in both
+// modes and deliberately avoid the blue-green interface colors, so a hue never means two things.
 export type Action = 'search_only' | 'search_cart' | 'no_search';
 
 export const actionLabel: Record<Action, string> = {
@@ -9,12 +10,12 @@ export const actionLabel: Record<Action, string> = {
 };
 
 const colors: Record<string, string> = {
-  namecheap: 'var(--s1)',
-  godaddy: 'var(--s2)',
-  ionos: 'var(--s3)',
+  namecheap: 'var(--reg-namecheap)',
+  godaddy: 'var(--reg-godaddy)',
+  ionos: 'var(--reg-ionos)',
   control: 'var(--ctrl)',
 };
-export const colorVar = (key: string) => colors[key] ?? 'var(--s4)';
+export const colorVar = (key: string) => colors[key] ?? 'var(--reg-other)';
 
 export interface ArmDatum {
   id: string;
