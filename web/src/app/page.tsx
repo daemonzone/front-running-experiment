@@ -3,6 +3,7 @@ import { ArmBars } from '@/components/ArmBars';
 import { CumulativeChart } from '@/components/CumulativeChart';
 import { MonthPicker } from '@/components/MonthPicker';
 import { StatTile } from '@/components/StatTile';
+import { IconClock, IconEye, IconNames, IconShield } from '@/components/icons';
 import { q } from '@/lib/db';
 import { cohortFilter, listMonths, monthLabel, resolveMonth } from '@/lib/months';
 import { fisherOneSided } from '@/lib/stats';
@@ -83,7 +84,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       <section className="hero">
         <div className="hero__copy">
           <span className="eyebrow">Open experiment · live data</span>
-          <h1>Do registrars register names after you search for them?</h1>
+          <h1>Do registrars register names <span className="grad-text">after you search for them?</span></h1>
           <p className="lede">
             A suspicion, tested. Every month, new unregistered, randomly generated names are searched on different
             registrars — or never — and then watched daily in the public registry data. Every result is published,
@@ -110,10 +111,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       <MonthPicker basePath="/" months={months} selected={sel} />
 
       <div className="tiles">
-        <StatTile label={`Names · ${sel === 'all' ? 'all time' : monthLabel(sel)}`} value={t.total} hint={`${t.registered} registered`} />
-        <StatTile label="Being monitored" value={t.active} hint={`${site.monitorDays}-day window each`} />
-        <StatTile label="Last registry check" value={t.last_check ? fmtDate(t.last_check) : '—'} hint={t.last_check ? new Date(t.last_check).toISOString().slice(11, 16) + ' UTC' : 'no check yet'} />
-        <StatTile label="Control names registered" value={control ? `${control.hits} / ${control.n}` : '—'} hint="never-searched baseline" />
+        <StatTile label={`Names · ${sel === 'all' ? 'all time' : monthLabel(sel)}`} value={t.total} hint={`${t.registered} registered`} icon={<IconNames />} />
+        <StatTile label="Being monitored" value={t.active} hint={`${site.monitorDays}-day window each`} icon={<IconEye />} />
+        <StatTile label="Last registry check" value={t.last_check ? fmtDate(t.last_check) : '—'} hint={t.last_check ? new Date(t.last_check).toISOString().slice(11, 16) + ' UTC' : 'no check yet'} icon={<IconClock />} />
+        <StatTile label="Control names registered" value={control ? `${control.hits} / ${control.n}` : '—'} hint="never-searched baseline" icon={<IconShield />} />
       </div>
 
       <section className="section">
