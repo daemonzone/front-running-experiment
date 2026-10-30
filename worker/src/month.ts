@@ -5,7 +5,7 @@ export const monthKey = (d: Date) => d.toISOString().slice(0, 10); // 2026-11-01
 
 export function parseMonth(arg?: string): Date {
   if (!arg) return monthStart();
-  const m = /^(\d{4})-(\d{2})$/.exec(arg);
-  if (!m) throw new Error(`month must look like YYYY-MM, got "${arg}"`);
+  const m = /^(\d{4})-?(\d{2})$/.exec(arg); // 2026-11 or 202611
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) throw new Error(`month must look like YYYY-MM or YYYYMM, got "${arg}"`);
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1));
 }

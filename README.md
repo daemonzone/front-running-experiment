@@ -2,7 +2,7 @@
 
 An experiment to test whether a domain registrar registers names that people merely *searched* for on its site.
 
-Every month (on the 1st), randomly generated, brand-like names (`.com` mostly) that are verified unregistered via RDAP are split into arms — `NAMES_PER_ARM` (default 5) per registrar × action, and 5 for the control:
+Every month (on the 1st), brand-style names built from real words and roots (`worker/src/namegen.ts`, word lists in `worker/src/words.ts`) (`.com` mostly) that are verified unregistered via RDAP are split into arms — `NAMES_PER_ARM` (default 5) per registrar × action, and 5 for the control:
 
 | Arm | What happens |
 |---|---|
@@ -55,6 +55,7 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `doc
 | Command | |
 |---|---|
 | `run [--searches=N]` | **The whole cycle in the foreground**: consolidate finished months → generate this month's cohort if missing → search up to `N` names (default 3) → RDAP monitor. Everything is printed live; best way to watch it work |
+| `words [n] [--check]` | Preview `n` generated names and the recipe of each; `--check` samples their RDAP availability. No database writes |
 | `generate [YYYY-MM]` | Generate that month's cohort (default: current): `NAMES_PER_ARM` RDAP-verified names for every group + control; every candidate is logged in `name_candidates`. Idempotent (tops up short groups) |
 | `consolidate [YYYY-MM]` | Freeze a cohort's results into an immutable snapshot (default: all finished, unconsolidated months) |
 | `search [n]` | Run up to `n` pending searches now (random 90–420 s pauses between them) |
@@ -122,6 +123,18 @@ Keep the same egress IP for the whole experiment (it is logged per search), and 
 ## Site pages
 
 Edit `web/src/lib/site.ts` (author, contact, start date, repo URL) before publishing. `/about` is the intro, `/method` the pre-registered method, `/example-report` a clearly labelled fake-data report showing how results are presented (registrars anonymised as A/B/C).
+
+## Name generation
+
+`worker/src/namegen.ts` builds each name from real words and roots in `worker/src/words.ts`, in four patterns: **root + suffix** (`kleos` + `hq`), **word + word** (`harbor` + `lane`), **prefix + root** (`neo` + `cedar`) and **root + ending** (`lumen` + `ora`). Names are 5–11 letters, pronounceable by construction, free of a small blocklist of offensive strings, and mostly `.com`. The generator is part of the worker: the monthly `generate` job (cron, 1st of the month) calls it and keeps going until every group has `NAMES_PER_ARM` names the registry (RDAP) reports as unregistered. Most real-word names are already taken (roughly 75% in a test sample), so a cohort needs a few hundred candidates and takes several minutes. Every candidate, with its recipe and RDAP result, is stored in `name_candidates` and shown on the Generation page.
+
+```bash
+cd worker
+npm run cli -- words 30 --check        # preview names + their availability, nothing stored
+npm run cli -- --generate 202611       # generate November 2026's cohort (also: generate 2026-11, or no month = current)
+```
+
+To change the style, edit the word lists in `words.ts` or the pattern weights in `namegen.ts`; `words` shows the effect immediately.
 
 ## Monthly cycle
 

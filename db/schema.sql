@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS name_candidates (
   tld         TEXT NOT NULL,
   outcome     candidate_outcome NOT NULL,
   http_status INTEGER,
+  recipe      TEXT,                       -- how the name was built, e.g. 'root+suffix: kleos + hq'
   rdap_url    TEXT,                       -- public URL anyone can open to verify the result
   checked_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   error       TEXT,

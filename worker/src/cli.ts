@@ -2,6 +2,8 @@ import cron from 'node-cron';
 import { config } from './config.js';
 import { pool, q } from './db.js';
 import { createLogger, setLogFile, setLogLevel } from './logger.js';
+import { generateName, weightedTld } from './namegen.js';
+import { rdapLookup, rdapPause } from './rdap.js';
 import { monthKey, monthStart, parseMonth } from './month.js';
 import { consolidate, consolidateDue } from './jobs/consolidate.js';
 import { generate } from './jobs/generate.js';
@@ -10,10 +12,22 @@ import { monitor } from './jobs/monitor.js';
 import { abortOrphanedRuns, runJob, type Trigger } from './jobs/runner.js';
 import { login, logManual, search } from './jobs/search.js';
 
-// ---- flags: --verbose/-v  --quiet  --headed  --force  --no-file
+// ---- command line -------------------------------------------------------------------------------
+// Both styles work:   cli.ts generate 2026-11      cli.ts --generate 202611      cli.ts --generate=2026-11
+// Options:  --verbose/-v  --quiet  --headed  --fast  --force  --no-file  --searches=N  --check
+const COMMANDS = ['generate', 'search', 'monitor', 'consolidate', 'manifest', 'run', 'runs', 'status', 'scheduler', 'login', 'log-manual', 'words'];
 const raw = process.argv.slice(2);
 const flags = new Set(raw.filter((a) => a.startsWith('-')));
-const [cmd, ...args] = raw.filter((a) => !a.startsWith('-'));
+const positional = raw.filter((a) => !a.startsWith('-'));
+const flagCmd = raw.map((a) => /^--([a-z-]+)(?:=(.*))?$/.exec(a)).find((m) => m && COMMANDS.includes(m[1]));
+let cmd: string | undefined;
+let args: string[];
+if (flagCmd) {
+  cmd = flagCmd[1];
+  args = flagCmd[2] !== undefined ? [flagCmd[2], ...positional] : positional; // --generate=202611 | --generate 202611
+} else {
+  [cmd, ...args] = positional;
+}
 if (flags.has('--verbose') || flags.has('-v')) setLogLevel('debug');
 if (flags.has('--quiet')) setLogLevel('warn');
 if (flags.has('--no-file')) setLogFile(false);
@@ -107,6 +121,24 @@ async function runAll() {
   console.table(await q('SELECT * FROM arm_stats'));
 }
 
+// ---- words: preview the name generator (no database writes) ------------------------------------
+async function words(n = 20) {
+  const wlog = createLogger('words');
+  const check = flags.has('--check');
+  let free = 0;
+  for (let i = 0; i < n; i++) {
+    const g = generateName();
+    const name = `${g.label}.${weightedTld(config.tldWeights)}`;
+    if (!check) { console.log(`${name.padEnd(24)} ${g.recipe}`); continue; }
+    const r = await rdapLookup(name);
+    await rdapPause();
+    const state = r.registered === false ? 'FREE' : r.registered ? 'taken' : '?';
+    if (r.registered === false) free++;
+    console.log(`${name.padEnd(24)} ${state.padEnd(6)} ${g.recipe}`);
+  }
+  if (check) wlog.info('availability sample', { checked: n, free, taken_pct: Math.round((100 * (n - free)) / n) });
+}
+
 // ---- one-off commands ------------------------------------------------------------------------
 async function runs(n = 15) {
   const rows = await q(
@@ -128,6 +160,7 @@ async function main() {
     case 'login': await login(args[0]); break;
     case 'runs': await runs(args[0] ? Number(args[0]) : undefined); break;
     case 'status': await stateSnapshot(log); console.table(await q('SELECT * FROM arm_stats')); break;
+    case 'words': await words(args[0] ? Number(args[0]) : undefined); break;
     case 'run': await runAll(); break;
     case 'scheduler': await scheduler(); break;
     default:
@@ -136,7 +169,8 @@ async function main() {
 commands:
   run [--searches=N]     the whole cycle in the foreground: consolidate, generate (if missing),
                          search up to N (default ${config.searchesPerRun}), monitor. Best for watching it work
-  generate [YYYY-MM]     generate a month's cohort (default: current month)
+  generate [YYYY-MM]     generate a month's cohort (default: current month); also: --generate 202611
+  words [n] [--check]    preview n generated names and how they are built (--check: RDAP availability sample; no DB writes)
   search [n]             run up to n pending searches now (default ${config.searchesPerRun})
   monitor                RDAP-check every monitored name
   consolidate [YYYY-MM]  freeze finished months into snapshots

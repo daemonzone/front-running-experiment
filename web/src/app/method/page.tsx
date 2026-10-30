@@ -29,7 +29,7 @@ export default function Method() {
           <h2 id="names">2. Names</h2>
           <ul>
             <li><b>Monthly cohorts.</b> On the 1st of every month, 5 new names are generated for each group, and for the control. Every candidate tried — accepted or rejected — is published on the <a href="/generation">Generation</a> page with its RDAP result.</li>
-            <li>Pseudo-words built from random syllables, 6–10 letters, brand-like (mostly <code>.com</code>, some <code>.net</code>/<code>.org</code>).</li>
+            <li>Brand-style names built from real words and roots, 5–11 letters, mostly <code>.com</code> (some <code>.net</code>/<code>.org</code>): a root plus a suffix (<i>kleos + hq</i>), two short words (<i>harbor + lane</i>), a prefix plus a root, or a root with a coined ending. They are meant to read like names people actually search for. The recipe of every candidate is published.</li>
             <li>A name is only used if the registry&apos;s RDAP service says it is not registered at generation time. RDAP queries go to the registry, never to a registrar.</li>
             <li>A word is never reused under another TLD, so groups can&apos;t contaminate each other.</li>
             <li>Names are not checked for trademarks or meaning. Unrelated third parties may register one for ordinary reasons — that is what the control group measures.</li>

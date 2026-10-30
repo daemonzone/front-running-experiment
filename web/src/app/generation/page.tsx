@@ -19,7 +19,7 @@ export default async function Generation({ searchParams }: { searchParams: Promi
   const perArm: number = cohort?.names_per_arm ?? 5;
 
   const candidates = await q(
-    `SELECT c.id, c.name, c.outcome, c.http_status, c.rdap_url, c.checked_at, c.error,
+    `SELECT c.id, c.name, c.recipe, c.outcome, c.http_status, c.rdap_url, c.checked_at, c.error,
             d.assigned_action AS action, r.name AS registrar
        FROM name_candidates c
        LEFT JOIN domains d ON d.id = c.domain_id
@@ -48,7 +48,7 @@ export default async function Generation({ searchParams }: { searchParams: Promi
         <span className="eyebrow">Transparency · name generation</span>
         <h1>How the names were chosen</h1>
         <p className="lede">
-          Every month, on the 1st, {perArm} brand-like names are generated for each group — each registrar × action, and the
+          Every month, on the 1st, {perArm} brand-style names — built from real words and roots, like <i>kleos + hq</i> — are generated for each group — each registrar × action, and the
           never-searched control. Every candidate is checked against the registry (RDAP) and listed here, including the
           ones that were rejected.
         </p>
@@ -115,12 +115,13 @@ export default async function Generation({ searchParams }: { searchParams: Promi
             </div>
             <div className="card card--flush table-wrap">
               <table>
-                <thead><tr><th className="n">#</th><th>Candidate</th><th>RDAP result</th><th>HTTP</th><th>Checked (UTC)</th><th>Assigned to</th><th></th></tr></thead>
+                <thead><tr><th className="n">#</th><th>Candidate</th><th>Built from</th><th>RDAP result</th><th>HTTP</th><th>Checked (UTC)</th><th>Assigned to</th><th></th></tr></thead>
                 <tbody>
                   {candidates.map((c: any, i: number) => (
                     <tr key={c.id}>
                       <td className="n muted">{i + 1}</td>
                       <td><b>{c.name}</b></td>
+                      <td className="muted">{c.recipe ?? '—'}</td>
                       <td><OutcomePill outcome={c.outcome} /></td>
                       <td>{c.http_status ?? '—'}</td>
                       <td>{c.checked_at ? fmtDate(c.checked_at, true) : '—'}</td>

@@ -3,7 +3,7 @@ import { config } from '../config.js';
 import { pool, q, type Action, type Registrar } from '../db.js';
 import { createLogger, type Logger } from '../logger.js';
 import { monthKey, monthStart } from '../month.js';
-import { generateLabel, weightedTld } from '../namegen.js';
+import { generateName, weightedTld } from '../namegen.js';
 import { rdapLookup, rdapPause } from '../rdap.js';
 
 interface Arm { registrarId: number | null; slug: string; action: Action; need: number }
@@ -44,16 +44,18 @@ export async function generate(month: Date = monthStart(), log: Logger = createL
   let attempts = 0;
   let rejected = 0;
   let accepted = 0;
-  const maxAttempts = Math.max(50, missing() * 25);
+  // Real-word names are often taken already, so allow plenty of candidates (each is one RDAP call).
+  const maxAttempts = Math.max(150, missing() * 80);
   while (missing() > 0 && attempts < maxAttempts) {
     attempts++;
-    const label = generateLabel();
+    const gen = generateName();
+    const label = gen.label;
     const tld = weightedTld(config.tldWeights);
     const name = `${label}.${tld}`;
 
     const dup = await q('SELECT 1 FROM name_candidates WHERE label = $1 LIMIT 1', [label]);
     if (dup.length) {
-      await q(`INSERT INTO name_candidates (cohort, name, label, tld, outcome) VALUES ($1,$2,$3,$4,'duplicate_label')`, [cohort, name, label, tld]);
+      await q(`INSERT INTO name_candidates (cohort, name, label, tld, outcome, recipe) VALUES ($1,$2,$3,$4,'duplicate_label',$5)`, [cohort, name, label, tld, gen.recipe]);
       log.debug('candidate skipped', { name, outcome: 'duplicate_label' });
       rejected++;
       continue;
@@ -67,13 +69,13 @@ export async function generate(month: Date = monthStart(), log: Logger = createL
     try {
       await client.query('BEGIN');
       const cand = await client.query(
-        `INSERT INTO name_candidates (cohort, name, label, tld, outcome, http_status, rdap_url, error)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-        [cohort, name, label, tld, outcome, rdap.httpStatus, rdap.url || null, rdap.error]);
+        `INSERT INTO name_candidates (cohort, name, label, tld, outcome, recipe, http_status, rdap_url, error)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [cohort, name, label, tld, outcome, gen.recipe, rdap.httpStatus, rdap.url || null, rdap.error]);
 
       if (outcome !== 'available') {
         await client.query('COMMIT');
-        log.info('candidate rejected', { name, outcome, http: rdap.httpStatus ?? 'none', error: rdap.error });
+        log.info('candidate rejected', { name, recipe: gen.recipe, outcome, http: rdap.httpStatus ?? 'none', error: rdap.error });
         rejected++;
         continue;
       }
@@ -100,7 +102,7 @@ export async function generate(month: Date = monthStart(), log: Logger = createL
       await client.query('COMMIT');
       arm.need--;
       accepted++;
-      log.info('candidate accepted', { name, action: arm.action, registrar: arm.slug, left: missing(), tried: attempts });
+      log.info('candidate accepted', { name, recipe: gen.recipe, action: arm.action, registrar: arm.slug, left: missing(), tried: attempts });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;

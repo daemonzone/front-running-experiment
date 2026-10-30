@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 // Whitelisted tables only. rdap_checks.raw is excluded to keep the CSV compact.
 const queries: Record<string, string> = {
-  name_candidates: `SELECT to_char(c.cohort, 'YYYY-MM') AS cohort, c.name, c.outcome, c.http_status, c.rdap_url, c.checked_at,
+  name_candidates: `SELECT to_char(c.cohort, 'YYYY-MM') AS cohort, c.name, c.recipe, c.outcome, c.http_status, c.rdap_url, c.checked_at,
                            d.assigned_action AS action, r.slug AS registrar
                       FROM name_candidates c LEFT JOIN domains d ON d.id = c.domain_id
                       LEFT JOIN registrars r ON r.id = d.assigned_registrar_id ORDER BY c.id`,
