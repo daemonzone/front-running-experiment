@@ -101,7 +101,7 @@ export default async function Domains({ searchParams }: { searchParams: Promise<
       <div className="page-head">
         <span className="eyebrow">Open data</span>
         <h1>All names</h1>
-        <p className="lede">Every name in the experiment, its group, and its current status. Click a column header to sort.</p>
+        <p className="lede one-line">Every name in the experiment, its group, and its current status. Click a column header to sort.</p>
       </div>
 
       <MonthPicker basePath="/domains" months={months} selected={sel} extra={{ status, registrar, sort, dir: cur.dir, size: cur.size }} />
