@@ -19,7 +19,7 @@ export function CaseStudy({ domain, searches, rdap }: { domain: string; searches
   return (
     <section className="case section" aria-labelledby="case-title">
       <div className="case__head">
-        <span className="badge-anecdote">Case that started it · not counted in the results below</span>
+        <span className="badge-anecdote">Case that started it</span>
         <h2 id="case-title"><span className="grad-text">{domain}</span>: searched, then found it already registered (not by me)</h2>
       </div>
 

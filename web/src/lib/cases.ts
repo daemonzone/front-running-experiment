@@ -1,4 +1,4 @@
-// The anecdote that prompted the experiment. NOT part of the experiment's data or counts.
+// The anecdote that prompted the experiment (the name is also part of the October cohort).
 // Namecheap time: browser-history entry (Fri Oct 30 2026 01:39:25 GMT+0100 = 00:39:25 UTC).
 export const kleoshq = {
   domain: 'kleoshq.com',
