@@ -91,7 +91,7 @@ A `search_cart` whose cart add can't be confirmed is logged as `error` and retri
 
 **How a search is made.** The adapter opens the registrar's page, moves the mouse to the search box, clicks it, types the name **letter by letter** (uneven 70–190 ms keystrokes, the odd hesitation), then presses the search button, as a person would. It never opens a results URL directly. If the site shows a **security check** page ("Just a moment…", "Access Denied"), the adapter doesn't try to get around it: in a visible window it waits up to 3 minutes for you to complete the check, headless it stops.
 
-**Status.** IONOS: validated end to end (search + cart) with real Chrome. Namecheap and GoDaddy: written against generic selectors; both blocked a *headless* visit (Cloudflare "Just a moment…" and Akamai "Access Denied"), so they need to be checked in a visible Chrome (`search --registrar=namecheap --chrome -v`) and their selectors adjusted from the failure screenshots.
+**Status.** IONOS: validated end to end (search + cart) with real Chrome. Namecheap: loads normally in a visible Chrome (it blocked *headless*); search-only selectors fixed, search+cart not yet validated. **GoDaddy: blocks the automated browser** (its bot protection answers "Access Denied" on the search results, even in a visible real Chrome). Nothing is done to get around that: GoDaddy names are searched by hand and recorded with `log-manual`, or GoDaddy is dropped from the experiment (`UPDATE registrars SET enabled = FALSE WHERE slug = 'godaddy'`).
 
 The adapters in `worker/src/adapters` were written **without being run against the live sites** (their markup changes often and may be behind bot protection). Before trusting the data:
 
@@ -391,6 +391,7 @@ Other commands: `consolidate [YYYY-MM]` (freeze a month), `manifest` (hash assig
 | `--registrar=<slug>` | (`search`) only names assigned to that registrar: `namecheap`, `godaddy`, `ionos` |
 | `--action=<a>` | (`search`) only `search_only` or `search_cart` names |
 | `--domain=<name>` | (`search`) only that one pending name |
+| `--exclude=<slug,...>` | (`search`) skip those registrars, e.g. `--exclude=godaddy` |
 | `--searches=N` | (`run`) how many searches the full cycle does |
 | `--check` | (`words`) sample RDAP availability of the previewed names |
 

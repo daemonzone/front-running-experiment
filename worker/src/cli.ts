@@ -157,7 +157,7 @@ async function main() {
     case 'generate': await once('generate', (l) => generate(parseMonth(args[0]), l)); break;
     case 'consolidate': await once('consolidate', (l) => (args[0] ? consolidate(parseMonth(args[0]), l) : consolidateDue(l))); break;
     case 'search': await once('search', (l) => search(args[0] ? Number(args[0]) : undefined, l, {
-      registrar: opt('registrar'), action: opt('action'), domain: opt('domain'), dryRun: flags.has('--dry-run'),
+      registrar: opt('registrar'), action: opt('action'), domain: opt('domain'), exclude: opt('exclude'), dryRun: flags.has('--dry-run'),
     })); break;
     case 'monitor': await once('monitor', (l) => monitor(l)); break;
     case 'manifest': await once('manifest', (l) => manifest(l)); break;
@@ -177,7 +177,7 @@ commands:
   generate [YYYY-MM]     generate a month's cohort (default: current month); also: --generate 202611
   words [n] [--check]    preview n generated names and how they are built (--check: RDAP availability sample; no DB writes)
   search [n]             search up to n pending names on their registrar now (default ${config.searchesPerRun})
-                         options: --registrar=<slug> --action=<search_only|search_cart> --domain=<name> --dry-run
+                         options: --registrar=<slug> --exclude=<slug,slug> --action=<search_only|search_cart> --domain=<name> --dry-run
   monitor                RDAP-check every monitored name
   consolidate [YYYY-MM]  freeze finished months into snapshots
   manifest               hash assignments + screenshots (then: ots stamp <file>)

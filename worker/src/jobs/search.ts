@@ -179,6 +179,7 @@ export interface SearchOptions {
   registrar?: string;   // only names assigned to this registrar slug
   action?: string;      // search_only | search_cart
   domain?: string;      // one specific name
+  exclude?: string;     // comma-separated registrar slugs to skip
   dryRun?: boolean;     // list what would be searched, don't open a browser
 }
 
@@ -195,8 +196,8 @@ export async function search(
     const [known] = await q('SELECT 1 FROM registrars WHERE slug = $1', [opts.registrar]);
     if (!known) throw new Error(`unknown registrar "${opts.registrar}"`);
   }
-  const filters = { registrar: opts.registrar, action: opts.action, domain: opts.domain?.toLowerCase() };
-  if (opts.registrar || opts.action || opts.domain) log.info('filters', filters);
+  const filters = { registrar: opts.registrar, action: opts.action, domain: opts.domain?.toLowerCase(), exclude: opts.exclude };
+  if (opts.registrar || opts.action || opts.domain || opts.exclude) log.info('filters', filters);
 
   // Give up on domains that already failed 3 times, so a broken adapter doesn't loop forever.
   const gaveUp = await q(`UPDATE domains d SET status = 'failed' WHERE status = 'pending_search'
@@ -211,8 +212,9 @@ export async function search(
         AND ($2::text IS NULL OR r.slug = $2)
         AND ($3::text IS NULL OR d.assigned_action::text = $3)
         AND ($4::text IS NULL OR d.name = $4)
+        AND ($5::text IS NULL OR r.slug <> ALL (string_to_array($5, ',')))
       ORDER BY random() LIMIT $1`,
-    [limit, filters.registrar ?? null, filters.action ?? null, filters.domain ?? null]);
+    [limit, filters.registrar ?? null, filters.action ?? null, filters.domain ?? null, filters.exclude ?? null]);
   log.info('pending searches', { pending, this_run: rows.length, limit });
 
   if (opts.dryRun) {

@@ -55,8 +55,18 @@ export interface TypedSearchConfig {
   submit?: (page: Page, input: Locator) => Locator; // the search button (given the box we typed in); Enter is pressed if omitted
 }
 
-const CHALLENGE_TITLE = /just a moment|access denied|attention required|verify you are human|security check/i;
+// A challenge can be completed by a person (a checkbox, an automatic check). A block cannot: the site has refused.
+const CHALLENGE_TITLE = /just a moment|attention required|verify you are human|security check/i;
 const CHALLENGE_BODY = /performing security verification|are you a (robot|human)|verify you are human|checking your browser/i;
+const BLOCK_TITLE = /^\s*access denied/i;
+const BLOCK_BODY = /you don'?t have permission to access|access to this page has been denied|request blocked/i;
+
+async function onBlockPage(page: Page): Promise<boolean> {
+  const title = await page.title().catch(() => '');
+  if (BLOCK_TITLE.test(title)) return true;
+  const body = await page.evaluate(() => document.body?.innerText.slice(0, 300) ?? '').catch(() => '');
+  return BLOCK_BODY.test(body);
+}
 
 async function onChallengePage(page: Page): Promise<boolean> {
   const title = await page.title().catch(() => '');
@@ -70,6 +80,9 @@ async function onChallengePage(page: Page): Promise<boolean> {
  * visible window we wait (up to 3 min) for the person watching to complete it; headless, we stop.
  */
 async function waitOutChallenge(page: Page): Promise<void> {
+  if (await onBlockPage(page)) {
+    throw new Error(`the site blocked this browser ("${await page.title().catch(() => '')}" at ${page.url().slice(0, 90)}); nothing to complete here. Search this name by hand and record it with log-manual`);
+  }
   if (!(await onChallengePage(page))) return;
   if (config.headless) throw new Error(`security check page shown (title "${await page.title()}"); headless runs can't complete it. Use --chrome and complete it in the window`);
   log.warn('SECURITY CHECK shown by the site: complete it in the browser window (waiting up to 3 minutes)', { url: page.url().slice(0, 100) });
