@@ -111,7 +111,8 @@ export default async function Generation({ searchParams }: { searchParams: Promi
                 <p>
                   In order of generation. {count('available')} available · {count('already_registered')} already registered ·{' '}
                   {count('duplicate_label')} duplicate words · {count('inconclusive')} inconclusive. &quot;Verify&quot; opens the registry&apos;s own
-                  RDAP answer (it reflects today&apos;s state, so a name accepted here may show as registered later).
+                  RDAP answer, which reflects today&apos;s state. <b>For a name that is free the registry answers &quot;404 not found&quot;: that is the expected result</b>
+                  (it has no record because the name isn&apos;t registered). For a registered name it shows the record instead.
                 </p>
               </div>
             </div>
@@ -128,7 +129,11 @@ export default async function Generation({ searchParams }: { searchParams: Promi
                       <td>{c.http_status ?? '—'}</td>
                       <td>{c.checked_at ? fmtDate(c.checked_at, true) : '—'}</td>
                       <td>{c.action ? <>{c.registrar ?? 'Control'} <ActionIcon action={c.action as Action} /></> : <span className="muted">not used</span>}</td>
-                      <td>{c.rdap_url ? <a href={c.rdap_url} target="_blank" rel="noreferrer">Verify ↗</a> : ''}</td>
+                      <td>{c.rdap_url ? (
+                        <a href={c.rdap_url} target="_blank" rel="noreferrer" title={c.outcome === 'available' ? 'Free: the registry will answer 404 (no such domain), which is the expected result' : 'Opens the registry record'}>
+                          Verify ↗{c.outcome === 'available' && <span className="muted"> (404 = free)</span>}
+                        </a>
+                      ) : ''}</td>
                     </tr>
                   ))}
                 </tbody>
