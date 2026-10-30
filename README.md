@@ -61,6 +61,7 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `doc
 | `search [n] [options]` | Search up to `n` pending names (default 3) on their assigned registrar, one after the other with random 10–30 s pauses. Options: `--registrar=<slug>`, `--action=<search_only\|search_cart>`, `--domain=<name>`, `--dry-run`. See [Scanning the names](#scanning-the-names-manual-run) |
 | `monitor` | RDAP-check everything being monitored and flag newly registered names |
 | `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (only for registrars with `requires_login`) |
+| `requeue <domain>` | Put a `failed` (or stuck pending) name back in the queue and void its failed attempts, so `search` will try it again from attempt 1 |
 | `log-manual <domain> <action> [notes]` | Record a search you did by hand when an adapter breaks. The action must match the assignment |
 | `manifest` | Write `data/manifests/manifest-<ts>.txt`: hash of the arm assignments (the pre-registration) + SHA-256 of every screenshot. Then run `ots stamp <file>` |
 | `runs [n]` | Last `n` job runs (what ran, when, how it ended, counters) |

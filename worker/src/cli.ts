@@ -17,7 +17,7 @@ import { login, logManual, search } from './jobs/search.js';
 // Options:  --verbose/-v  --quiet  --headed  --fast  --force  --no-file  --searches=N  --check
 //           --chrome (use the installed Google Chrome, headed)
 //           --registrar=<slug> --action=<search_only|search_cart> --domain=<name> --dry-run   (for search)
-const COMMANDS = ['generate', 'search', 'monitor', 'consolidate', 'manifest', 'run', 'runs', 'status', 'scheduler', 'login', 'log-manual', 'words'];
+const COMMANDS = ['generate', 'search', 'monitor', 'consolidate', 'manifest', 'run', 'runs', 'status', 'scheduler', 'login', 'log-manual', 'words', 'requeue'];
 const raw = process.argv.slice(2);
 const flags = new Set(raw.filter((a) => a.startsWith('-')));
 const positional = raw.filter((a) => !a.startsWith('-'));
@@ -142,6 +142,19 @@ async function words(n = 20) {
   if (check) wlog.info('availability sample', { checked: n, free, taken_pct: Math.round((100 * (n - free)) / n) });
 }
 
+// ---- requeue: give a failed name another go -------------------------------------------------------
+/** Put a failed (or stuck pending) name back in the queue; its failed attempts stop counting toward the limit of 3. */
+async function requeue(domain: string, log = createLogger('requeue')): Promise<Record<string, unknown>> {
+  const [d] = await q<{ id: number; status: string }>('SELECT id, status FROM domains WHERE name = $1', [domain.toLowerCase()]);
+  if (!d) throw new Error(`unknown domain ${domain}`);
+  if (!['failed', 'pending_search'].includes(d.status)) throw new Error(`only failed or pending names can be requeued; ${domain} is ${d.status}`);
+  const voided = await q(`UPDATE search_log SET outcome = 'skipped', notes = COALESCE(notes || '; ', '') || 'voided by requeue'
+                           WHERE domain_id = $1 AND outcome = 'error' RETURNING id`, [d.id]);
+  await q(`UPDATE domains SET status = 'pending_search' WHERE id = $1`, [d.id]);
+  log.info('back in the queue', { domain, was: d.status, voided_attempts: voided.length });
+  return { domain, voided_attempts: voided.length };
+}
+
 // ---- one-off commands ------------------------------------------------------------------------
 async function runs(n = 15) {
   const rows = await q(
@@ -162,6 +175,7 @@ async function main() {
     case 'monitor': await once('monitor', (l) => monitor(l)); break;
     case 'manifest': await once('manifest', (l) => manifest(l)); break;
     case 'log-manual': await once('log-manual', (l) => logManual(args[0], args[1], args.slice(2).join(' ') || undefined, l)); break;
+    case 'requeue': await once('requeue', (l) => requeue(args[0], l)); break;
     case 'login': await login(args[0]); break;
     case 'runs': await runs(args[0] ? Number(args[0]) : undefined); break;
     case 'status': await stateSnapshot(log); console.table(await q('SELECT * FROM arm_stats')); break;
@@ -182,6 +196,7 @@ commands:
   consolidate [YYYY-MM]  freeze finished months into snapshots
   manifest               hash assignments + screenshots (then: ots stamp <file>)
   log-manual <domain> <action> [notes]   record a search you did by hand
+  requeue <domain>       put a failed name back in the queue (its failed attempts stop counting)
   login <registrar>      save a browser session (run on the host)
   runs [n]               last n job runs
   status                 current state + per-group results
