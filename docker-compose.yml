@@ -20,6 +20,8 @@ services:
     build: ./web
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://frontrunning:frontrunning@db:5432/frontrunning}
+      DB_TARGET: ${DB_TARGET:-local}              # DB_TARGET=neon + NEON_DATABASE_URL: see README "Using Neon"
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
     ports: ["10100:3000"]
     depends_on:
       db: { condition: service_healthy }
@@ -30,6 +32,8 @@ services:
     shm_size: 1gb
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://frontrunning:frontrunning@db:5432/frontrunning}
+      DB_TARGET: ${DB_TARGET:-local}
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
       DATA_DIR: /data
       TZ: ${TZ:-Europe/Rome}
       HEADLESS: ${HEADLESS:-true}

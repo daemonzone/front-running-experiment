@@ -1,6 +1,6 @@
 import path from 'node:path';
 import cron from 'node-cron';
-import { config } from './config.js';
+import { config, dbTarget } from './config.js';
 import { pool, q } from './db.js';
 import { createLogger, setLogFile, setLogLevel } from './logger.js';
 import { generateName, weightedTld } from './namegen.js';
@@ -186,6 +186,7 @@ async function runs(n = 15) {
 }
 
 async function main() {
+  if (cmd && cmd !== 'words') log.info('database', { target: dbTarget, host: new URL(config.databaseUrl).host });
   const once = <T extends Record<string, unknown> | void>(job: string, fn: Parameters<typeof runJob<T>>[1]) => runJob(job, fn, { force });
   switch (cmd) {
     case 'generate': await once('generate', (l) => generate(parseMonth(args[0]), l)); break;

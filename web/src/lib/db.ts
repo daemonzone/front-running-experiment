@@ -6,10 +6,17 @@ pg.types.setTypeParser(1082, (v: string) => v);
 
 const g = globalThis as unknown as { pool?: pg.Pool };
 
+// DATABASE_URL normally. DB_TARGET=neon (with NEON_DATABASE_URL) points a local/Docker run at Neon.
+function databaseUrl(): string | undefined {
+  const raw = process.env.DB_TARGET === 'neon' ? process.env.NEON_DATABASE_URL : process.env.DATABASE_URL;
+  if (!raw) return raw;
+  try { const u = new URL(raw); u.searchParams.delete('channel_binding'); return u.toString(); } catch { return raw; }
+}
+
 export const pool =
   g.pool ??
   (g.pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: databaseUrl(),
     max: 5,
     // Neon requires TLS; local docker postgres does not. Use sslmode in DATABASE_URL.
   }));

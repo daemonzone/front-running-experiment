@@ -489,6 +489,34 @@ Environment: `LOG_LEVEL=debug|info|warn|error` (default `info`), `LOG_FILE=false
 
 The code in this repository is released under the [MIT License](LICENSE).
 
+## Using Neon (PostgreSQL in the cloud)
+
+The local Docker Postgres stays the default and keeps working. Neon is an explicit switch, so nothing writes to it by accident, and every worker command logs which database it is about to use (`database target=local host=localhost:15432`).
+
+**Setup.** Copy `.env.neon.example` to `.env.neon` (git-ignored, it holds a password) and put the Neon connection string in it as `NEON_DATABASE_URL`. Use the *direct* host (no `-pooler`) for the worker.
+
+| | Local (default) | Neon |
+|---|---|---|
+| Worker on the Mac | `npm run cli -- monitor` | `npm run cli -- monitor --db=neon` (or `DB_TARGET=neon`) |
+| Website / worker in Docker | `docker compose up -d web` | `DB_TARGET=neon docker compose --env-file .env.neon up -d web` |
+| Website on Vercel | | set `DATABASE_URL` in the Vercel project to Neon's *pooled* string, ideally for a read-only role |
+
+`channel_binding=require` in a pasted Neon string is ignored (node-postgres can't use it); `sslmode=require` is needed and works.
+
+**Transferring the schema and the data** from the local database to an empty Neon database (use the same major Postgres version, 17):
+
+```bash
+# 1. dump the local database (schema + data), without owners/privileges
+docker compose exec -T db pg_dump -U frontrunning -d frontrunning --no-owner --no-privileges > backups/for-neon.sql
+# 2. load it into Neon (the container has psql and internet access); NEON_DATABASE_URL is the direct string
+set -a; . ./.env.neon; set +a
+docker compose exec -T db psql "$NEON_DATABASE_URL" -v ON_ERROR_STOP=1 < backups/for-neon.sql
+# 3. verify: same row count in every table, same fingerprint
+npm --prefix worker run cli -- status --db=neon
+```
+
+After the switch, the local copy is only a backup: run `monitor`, `search` and the scheduler with `--db=neon`, and keep one database as the source of truth.
+
 ## Backups
 
 `backups/` (git-ignored) holds database dumps. To take and verify one:

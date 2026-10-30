@@ -1,9 +1,28 @@
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
+// Which database: the local Docker Postgres (default) or Neon. Choose with `--db=neon` or DB_TARGET=neon.
+// The Neon connection string is a secret: it lives in the git-ignored <repo>/.env.neon (see .env.neon.example),
+// or in the environment. Values already set in the environment win over the file.
+const neonEnvFile = fileURLToPath(new URL('../../.env.neon', import.meta.url));
+if (existsSync(neonEnvFile)) process.loadEnvFile(neonEnvFile);
+
+export const dbTarget = (process.argv.find((a) => a.startsWith('--db='))?.split('=')[1] ?? process.env.DB_TARGET ?? 'local') as 'local' | 'neon';
+
+function pickDatabaseUrl(): string {
+  if (dbTarget === 'neon') {
+    const url = process.env.NEON_DATABASE_URL;
+    if (!url) throw new Error('--db=neon needs NEON_DATABASE_URL: put it in .env.neon (see .env.neon.example) or the environment');
+    return url;
+  }
+  if (dbTarget !== 'local') throw new Error(`--db must be "local" or "neon", got "${dbTarget}"`);
+  return process.env.DATABASE_URL ?? 'postgres://frontrunning:frontrunning@localhost:15432/frontrunning';
+}
 
 const int = (v: string | undefined, d: number) => (v && !Number.isNaN(Number(v)) ? Number(v) : d);
 
 export const config = {
-  databaseUrl: process.env.DATABASE_URL ?? 'postgres://frontrunning:frontrunning@localhost:15432/frontrunning',
+  databaseUrl: pickDatabaseUrl(),
   // Default: <repo>/data, whatever directory the command is run from (Docker sets DATA_DIR=/data).
   dataDir: process.env.DATA_DIR ?? fileURLToPath(new URL('../../data', import.meta.url)),
   headless: (process.env.HEADLESS ?? 'true') !== 'false',

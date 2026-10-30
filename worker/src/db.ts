@@ -5,7 +5,12 @@ import pg from 'pg';
 pg.types.setTypeParser(1082, (v: string) => v);
 import { config } from './config.js';
 
-export const pool = new pg.Pool({ connectionString: config.databaseUrl, max: 4 });
+/** Neon's copy-paste connection strings may carry `channel_binding=require`, which node-postgres can't use. */
+function cleanUrl(raw: string): string {
+  try { const u = new URL(raw); u.searchParams.delete('channel_binding'); return u.toString(); } catch { return raw; }
+}
+
+export const pool = new pg.Pool({ connectionString: cleanUrl(config.databaseUrl), max: 4 });
 
 export async function q<T extends pg.QueryResultRow = any>(text: string, params: unknown[] = []): Promise<T[]> {
   const res = await pool.query<T>(text, params);
