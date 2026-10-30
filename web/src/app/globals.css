@@ -255,13 +255,13 @@ tbody tr:hover td { background: color-mix(in srgb, var(--brand-tint) 55%, var(--
 .case::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--grad); }
 .case__head h2 { margin-top: 10px; font-size: 1.6rem; }
 .badge-anecdote { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--flag); background: var(--flag-tint); padding: 3px 10px; border-radius: 99px; }
-.case__flow { display: grid; grid-template-columns: 1fr minmax(110px, 160px) 1fr; gap: 12px; align-items: center; margin: 22px 0; }
+.case__flow { display: grid; grid-template-columns: 1fr minmax(110px, 160px) 1fr; gap: 12px; align-items: start; margin: 22px 0; }
 .case__col { display: flex; flex-direction: column; gap: 8px; }
 .case__when { font-size: 13px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; }
 .case__node { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-left: 5px solid var(--ink-3); border-radius: 10px; background: var(--surface-2); font-size: 14.5px; }
 .case__node span { color: var(--ink-2); font-size: 13.5px; }
 .case__node--hit { border-left-color: var(--brand); background: linear-gradient(135deg, var(--brand-tint), var(--surface-2) 70%); }
-.case__link { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.case__link { display: flex; flex-direction: column; align-items: center; gap: 6px; align-self: center; }
 .case__line { width: 100%; height: 0; border-top: 2px dashed var(--line-strong); }
 .case__line--arrow { position: relative; }
 .case__line--arrow::after { content: ""; position: absolute; right: -2px; top: -6px; border: 5px solid transparent; border-left: 8px solid var(--line-strong); }

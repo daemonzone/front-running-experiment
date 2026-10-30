@@ -61,10 +61,9 @@ export function CaseStudy({ domain, searches, rdap }: { domain: string; searches
       <div className="case__caveats">
         <h3>What this does — and doesn&apos;t — show</h3>
         <ul>
-          <li><b>It&apos;s one anecdote.</b> There is no control group here, and a name can be registered the day after a search by coincidence. That is exactly what the experiment below measures.</li>
-          <li><b>Two registrars were searched</b> (Namecheap with an added cart, IONOS search only), so this case can&apos;t separate their effects. The experiment below searches each name on one registrar only.</li>
+          <li><b>It&apos;s one anecdote.</b> There is no control group here, and a name can be registered shortly after a search by coincidence. That is exactly what the experiment below measures.</li>
           <li><b>The search is what counts.</b> Names are grouped by where they were searched. The registrar of record is recorded for information only: a third party can register a name through any registrar, so it is never used to attribute a registration.</li>
-          <li><b>Timing evidence.</b> The Namecheap time is a browser-history entry for a visit to Namecheap&apos;s domain search page; the IONOS search time wasn&apos;t recorded, so the delay is given for Namecheap only.</li>
+          <li><b>Timing evidence.</b> The search time is a browser-history entry for a visit to Namecheap&apos;s domain search page, so the exact search could have been a few minutes later.</li>
         </ul>
       </div>
     </section>
