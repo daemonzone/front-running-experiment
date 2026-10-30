@@ -17,7 +17,9 @@ export default async function Generation({ searchParams }: { searchParams: Promi
   const date = `${sel}-01`;
 
   const [cohort] = await q(
-    `SELECT month, names_per_arm, generated_at, assignments_sha256, consolidated_at FROM cohorts WHERE month = $1::date`, [date]);
+    `SELECT month, names_per_arm, generated_at, assignments_sha256, assignments_hashed_at, consolidated_at FROM cohorts WHERE month = $1::date`, [date]);
+  const [exposure] = await q<{ first: Date | null }>(
+    `SELECT MIN(searched_at) AS first FROM domains WHERE cohort = $1::date AND assigned_action <> 'no_search' AND searched_at IS NOT NULL`, [date]);
   const perArm: number = cohort?.names_per_arm ?? 5;
 
   const candidates = await q(
@@ -72,16 +74,30 @@ export default async function Generation({ searchParams }: { searchParams: Promi
             <StatTile label="Consolidated" value={cohort.consolidated_at ? fmtDate(cohort.consolidated_at) : '—'} hint={cohort.consolidated_at ? 'results snapshot taken' : `on ${fmtDate(next)}`} />
           </div>
 
-          {cohort.assignments_sha256 && (
-            <div className="notice">
-              <b>Pre-registration fingerprint.</b> SHA-256 of this month&apos;s final assignment list (name, action, registrar):{' '}
-              <code style={{ wordBreak: 'break-all' }}>{cohort.assignments_sha256}</code>
-            </div>
-          )}
+          {cohort.assignments_sha256 && (() => {
+            const hashedAt = cohort.assignments_hashed_at ? new Date(cohort.assignments_hashed_at) : null;
+            const firstSearch = exposure?.first ? new Date(exposure.first) : null;
+            const before = hashedAt && (!firstSearch || hashedAt < firstSearch);
+            return (
+              <div className={`notice ${before ? '' : 'notice--warn'}`}>
+                <b>Assignment fingerprint.</b> A SHA-256 hash of this month&apos;s list of which name goes to which group. If even one line changes, the hash changes, so it proves the list was fixed:
+                <div><code style={{ wordBreak: 'break-all' }}>{cohort.assignments_sha256}</code></div>
+                <p className="fp-line">
+                  {hashedAt ? <>Computed {fmtDate(hashedAt, true)}. </> : null}
+                  {before
+                    ? <b>✓ Computed before the first search{firstSearch ? '' : ' (none yet)'}.</b>
+                    : <b>⚠ Computed after searches began{firstSearch ? ` (first search ${fmtDate(firstSearch, true)})` : ''}: it documents the list as it stands, but it is not a pre-registration.</b>}
+                </p>
+                <p className="fp-line">
+                  To check it yourself, download <a href={`/api/export?table=assignments&month=${sel}`}>the list</a> and run <code>shasum -a 256 assignments-{sel}.txt</code>: the result must equal the hash above.
+                </p>
+              </div>
+            );
+          })()}
 
           <section className="section">
             <div className="section__head">
-              <div><h2>Assignment to groups</h2><p>Each valid name was assigned at random to a group that still needed names. Target: {perArm} per group.</p></div>
+              <div><h2>Assignment to groups</h2><p className="one-line">Each valid name was assigned at random to a group that still needed names. Target: {perArm} per group.</p></div>
             </div>
             <div className="grid-3">
               {groups.map((g) => {

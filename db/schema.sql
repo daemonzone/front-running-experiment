@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS cohorts (
   names_per_arm      SMALLINT NOT NULL,
   generated_at       TIMESTAMPTZ,            -- set once every arm quota is filled
   assignments_sha256 TEXT,                   -- hash of the final (name, action, registrar) list: the pre-registration
+  assignments_hashed_at TIMESTAMPTZ,         -- when that hash was computed (should be before the first search)
   consolidated_at    TIMESTAMPTZ
 );
 

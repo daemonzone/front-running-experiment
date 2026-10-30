@@ -6,7 +6,7 @@ import { generateName, weightedTld } from './namegen.js';
 import { rdapLookup, rdapPause } from './rdap.js';
 import { monthKey, monthStart, parseMonth } from './month.js';
 import { consolidate, consolidateDue } from './jobs/consolidate.js';
-import { generate } from './jobs/generate.js';
+import { computeFingerprint, generate } from './jobs/generate.js';
 import { manifest } from './jobs/manifest.js';
 import { monitor } from './jobs/monitor.js';
 import { abortOrphanedRuns, runJob, type Trigger } from './jobs/runner.js';
@@ -17,7 +17,7 @@ import { login, logManual, parseAt, search, todo } from './jobs/search.js';
 // Options:  --verbose/-v  --quiet  --headed  --fast  --force  --no-file  --searches=N  --check
 //           --chrome (use the installed Google Chrome, headed)
 //           --registrar=<slug> --action=<search_only|search_cart> --domain=<name> --dry-run   (for search)
-const COMMANDS = ['generate', 'search', 'monitor', 'consolidate', 'manifest', 'run', 'runs', 'status', 'scheduler', 'login', 'log-manual', 'words', 'requeue', 'todo'];
+const COMMANDS = ['generate', 'search', 'monitor', 'consolidate', 'manifest', 'run', 'runs', 'status', 'scheduler', 'login', 'log-manual', 'words', 'requeue', 'todo', 'fingerprint'];
 const raw = process.argv.slice(2);
 const flags = new Set(raw.filter((a) => a.startsWith('-')));
 const positional = raw.filter((a) => !a.startsWith('-'));
@@ -142,6 +142,25 @@ async function words(n = 20) {
   if (check) wlog.info('availability sample', { checked: n, free, taken_pct: Math.round((100 * (n - free)) / n) });
 }
 
+// ---- fingerprint: recompute a cohort's assignment hash from the data as it is now ------------------
+async function fingerprint(month: Date, log = createLogger('fingerprint')): Promise<Record<string, unknown>> {
+  const cohort = monthKey(monthStart(month));
+  const [c] = await q('SELECT 1 FROM cohorts WHERE month = $1', [cohort]);
+  if (!c) throw new Error(`no cohort for ${cohort.slice(0, 7)}`);
+  const { sha, count } = await computeFingerprint(cohort);
+  const [e] = await q<{ exposed: number; first: Date | null }>(
+    `SELECT COUNT(*)::int AS exposed, MIN(searched_at) AS first FROM domains
+      WHERE cohort = $1 AND assigned_action <> 'no_search' AND searched_at IS NOT NULL`, [cohort]);
+  await q('UPDATE cohorts SET assignments_sha256 = $2, assignments_hashed_at = now() WHERE month = $1', [cohort, sha]);
+  log.info('fingerprint stored', { cohort: cohort.slice(0, 7), names: count, sha256: sha });
+  if (e.exposed > 0) {
+    log.warn('this fingerprint was computed AFTER searches began, so it documents the list as it is now but is not a pre-registration', { searched_names: e.exposed, first_search: e.first?.toISOString() });
+  } else {
+    log.info('no name has been searched yet: now run `manifest` and `ots stamp` to lock this in');
+  }
+  return { cohort: cohort.slice(0, 7), names: count, sha256: sha, searched_names: e.exposed };
+}
+
 // ---- requeue: give a failed name another go -------------------------------------------------------
 /** Put a failed (or stuck pending) name back in the queue; its failed attempts stop counting toward the limit of 3. */
 async function requeue(domain: string, log = createLogger('requeue')): Promise<Record<string, unknown>> {
@@ -176,6 +195,7 @@ async function main() {
     case 'manifest': await once('manifest', (l) => manifest(l)); break;
     case 'log-manual': await once('log-manual', (l) => logManual(args[0], args[1], args.slice(2).join(' ') || undefined, l, { at: parseAt(opt('at')), screenshot: opt('screenshot') })); break;
     case 'todo': await once('todo', (l) => todo(l, opt('registrar'))); break;
+    case 'fingerprint': await once('fingerprint', (l) => fingerprint(parseMonth(args[0]), l)); break;
     case 'requeue': await once('requeue', (l) => requeue(args[0], l)); break;
     case 'login': await login(args[0]); break;
     case 'runs': await runs(args[0] ? Number(args[0]) : undefined); break;
@@ -199,6 +219,7 @@ commands:
   todo [--registrar=<slug>]   checklist of names to search by hand, with the commands to record them
   log-manual <domain> <action> [notes] [--at=HH:MM|ISO] [--screenshot=<file>]   record a search you did by hand
   requeue <domain>       put a failed name back in the queue (its failed attempts stop counting)
+  fingerprint [YYYY-MM]  recompute and store a cohort's assignment hash from the current data
   login <registrar>      save a browser session (run on the host)
   runs [n]               last n job runs
   status                 current state + per-group results

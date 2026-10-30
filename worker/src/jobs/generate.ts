@@ -27,6 +27,19 @@ async function loadArms(cohort: string, perArm: number): Promise<Arm[]> {
 }
 
 /**
+ * The canonical assignment list of a cohort, one line per name: "name<TAB>action<TAB>registrar" (registrar "-" for the
+ * control), sorted by name, no trailing newline. Its SHA-256 is the cohort's fingerprint; the website serves the same
+ * text at /api/export?table=assignments&month=YYYY-MM so anyone can recompute it.
+ */
+export async function computeFingerprint(cohort: string): Promise<{ sha: string; count: number }> {
+  const rows = await q<{ name: string; action: string; registrar: string | null }>(
+    `SELECT d.name, d.assigned_action AS action, r.slug AS registrar
+       FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id WHERE d.cohort = $1 ORDER BY d.name`, [cohort]);
+  const canonical = rows.map((r) => `${r.name}\t${r.action}\t${r.registrar ?? '-'}`).join('\n');
+  return { sha: createHash('sha256').update(canonical).digest('hex'), count: rows.length };
+}
+
+/**
  * Generate the cohort for a month: `namesPerArm` RDAP-verified free names for every group.
  * Idempotent: re-running only tops up groups that are short. Every candidate tried is logged
  * in name_candidates (accepted or not), so the whole selection process is auditable.
@@ -117,12 +130,8 @@ export async function generate(month: Date = monthStart(), log: Logger = createL
   }
 
   // Pre-registration: hash of the final assignment list for this cohort.
-  const rows = await q<{ name: string; action: string; registrar: string | null }>(
-    `SELECT d.name, d.assigned_action AS action, r.slug AS registrar
-       FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id WHERE d.cohort = $1 ORDER BY d.name`, [cohort]);
-  const canonical = rows.map((r) => `${r.name}\t${r.action}\t${r.registrar ?? '-'}`).join('\n');
-  const sha = createHash('sha256').update(canonical).digest('hex');
-  await q(`UPDATE cohorts SET generated_at = COALESCE(generated_at, now()), assignments_sha256 = $2 WHERE month = $1`, [cohort, sha]);
+  const { sha } = await computeFingerprint(cohort);
+  await q(`UPDATE cohorts SET generated_at = COALESCE(generated_at, now()), assignments_sha256 = $2, assignments_hashed_at = now() WHERE month = $1`, [cohort, sha]);
   log.info('cohort complete', { cohort, tried: attempts, assignments_sha256: sha });
   return { cohort, candidates: attempts, accepted, rejected, complete: true };
 }

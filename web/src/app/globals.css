@@ -308,3 +308,9 @@ th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--ink); }
 .pager__gap { padding: 0 4px; }
 .chip[aria-current="page"] { background: linear-gradient(120deg, var(--hero-a), var(--hero-b)); color: #fff; border-color: transparent; }
 .chip--off { opacity: .4; cursor: default; }
+
+/* one-line section descriptions (wrap only on narrow screens) and fingerprint panel */
+.section__head p.one-line { max-width: none; }
+.notice--warn { border-left-color: var(--flag); }
+.fp-line { margin: 8px 0 0; font-size: 14px; color: var(--ink-2); max-width: none; }
+.fp-line b { color: var(--ink); }

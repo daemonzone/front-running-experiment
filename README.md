@@ -61,6 +61,7 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `doc
 | `search [n] [options]` | Search up to `n` pending names (default 3) on their assigned registrar, one after the other with random 10–30 s pauses. Options: `--registrar=<slug>`, `--action=<search_only\|search_cart>`, `--domain=<name>`, `--dry-run`. See [Scanning the names](#scanning-the-names-manual-run) |
 | `monitor` | RDAP-check everything being monitored and flag newly registered names |
 | `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (only for registrars with `requires_login`) |
+| `fingerprint [YYYY-MM]` | Recompute and store a cohort's assignment fingerprint from the data as it is now, and warn if searches have already started |
 | `requeue <domain>` | Put a `failed` (or stuck pending) name back in the queue and void its failed attempts, so `search` will try it again from attempt 1 |
 | `todo [--registrar=<slug>]` | Checklist of the names still to search by hand, what to do for each, and the `log-manual` command to record it |
 | `log-manual <domain> <action> [notes] [--at=HH:MM\|ISO] [--screenshot=<file>]` | Record a search you did by hand. The action must match the assignment; `--at` is when you searched (default now); `--screenshot` is copied into `data/screenshots/` and hashed |
@@ -103,6 +104,22 @@ The adapters in `worker/src/adapters` were written **without being run against t
 4. Registrars with `requires_login = TRUE` reuse a session saved with `login <slug>` on the host (shared with the container through `./data`).
 
 By default carts are left abandoned like a real visitor would (`CLEAR_CART=true` empties them).
+
+## The assignment fingerprint (pre-registration)
+
+Each cohort has a **fingerprint**: the SHA-256 of its assignment list, one line per name, `name<TAB>action<TAB>registrar` (`-` for the control), sorted by name, no trailing newline. It shows on the Generation page. If a single line changes (a name swapped, a group moved) the hash changes completely, so publishing the hash *before* any search proves the groups were fixed in advance and can't be accused of cherry-picking.
+
+**Anyone can check it:** the Generation page links to the list (`/api/export?table=assignments&month=YYYY-MM`); download it and run `shasum -a 256 assignments-YYYY-MM.txt`, which must equal the hash shown.
+
+The page also says **when** the hash was computed, and whether that was before the first search of the cohort (a green tick) or after (an amber warning: it documents the list as it stands but is not a pre-registration).
+
+**What to do, for each real cohort** (in this order, before the first search):
+
+1. `generate` creates the cohort and computes its fingerprint automatically.
+2. `npm run cli -- manifest` writes a file containing the list and its hash, and `ots stamp <file>` ([OpenTimestamps](https://opentimestamps.org)) gives it a public timestamp. Keep the `.ots` receipt.
+3. Publish the hash (the site already does), then start the searches.
+
+If you edit names in a cohort afterwards, run `npm run cli -- fingerprint YYYY-MM` to refresh the stored hash. That is honest bookkeeping, but it is by definition not a pre-registration if searches have started, and the page will say so.
 
 ## Evidence hygiene
 

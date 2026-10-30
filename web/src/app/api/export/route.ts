@@ -28,7 +28,22 @@ const cell = (v: unknown) => {
 };
 
 export async function GET(req: Request) {
-  const table = new URL(req.url).searchParams.get('table') ?? '';
+  const url = new URL(req.url);
+  const table = url.searchParams.get('table') ?? '';
+
+  // The canonical assignment list whose SHA-256 is a cohort's fingerprint (same format as the worker computes).
+  if (table === 'assignments') {
+    const month = url.searchParams.get('month') ?? '';
+    if (!/^\d{4}-\d{2}$/.test(month)) return new Response('month=YYYY-MM required', { status: 400 });
+    const rows = await q<{ name: string; action: string; registrar: string | null }>(
+      `SELECT d.name, d.assigned_action AS action, r.slug AS registrar
+         FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id WHERE d.cohort = $1::date ORDER BY d.name`, [`${month}-01`]);
+    const text = rows.map((r) => `${r.name}\t${r.action}\t${r.registrar ?? '-'}`).join('\n'); // no trailing newline
+    return new Response(text, {
+      headers: { 'content-type': 'text/plain; charset=utf-8', 'content-disposition': `attachment; filename="assignments-${month}.txt"` },
+    });
+  }
+
   const sql = queries[table];
   if (!sql) return new Response('unknown table', { status: 400 });
   const rows = await q(sql);
