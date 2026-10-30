@@ -1,6 +1,9 @@
 // RDAP client. Uses the IANA bootstrap file to find the registry's RDAP server, so
 // queries go to the registry (e.g. Verisign for .com), never to a registrar.
 import { config } from './config.js';
+import { createLogger } from './logger.js';
+
+const log = createLogger('rdap');
 
 let bootstrap: Map<string, string> | null = null;
 
@@ -39,6 +42,15 @@ function parseRegistrar(json: any): { name: string | null; iana: number | null }
 }
 
 export async function rdapLookup(domain: string): Promise<RdapResult> {
+  const t0 = Date.now();
+  const r = await rdapLookupInner(domain);
+  const fields = { domain, http: r.httpStatus ?? 'none', registered: r.registered ?? 'unknown', ms: Date.now() - t0 };
+  if (r.error) log.warn('lookup inconclusive', { ...fields, error: r.error });
+  else log.debug('lookup', r.registered ? { ...fields, registrar: r.registrarName } : fields);
+  return r;
+}
+
+async function rdapLookupInner(domain: string): Promise<RdapResult> {
   const tld = domain.split('.').pop()!.toLowerCase();
   const empty: RdapResult = {
     url: '', httpStatus: null, registered: null, registrarName: null, registrarIanaId: null,

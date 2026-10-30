@@ -170,6 +170,22 @@ CREATE TABLE IF NOT EXISTS rdap_checks (
 CREATE INDEX IF NOT EXISTS rdap_checks_domain_idx ON rdap_checks (domain_id, checked_at DESC);
 
 -- ---------------------------------------------------------------------------
+-- Worker job runs: one row per execution of generate / search / monitor / consolidate.
+-- Lets you follow what the worker did (and see what is running right now).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS job_runs (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  job         TEXT NOT NULL,
+  trigger     TEXT NOT NULL DEFAULT 'manual',        -- manual | cron | startup
+  status      TEXT NOT NULL DEFAULT 'running',       -- running | ok | error | aborted
+  started_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ,
+  summary     JSONB,                                 -- counters returned by the job
+  error       TEXT
+);
+CREATE INDEX IF NOT EXISTS job_runs_started_idx ON job_runs (started_at DESC);
+
+-- ---------------------------------------------------------------------------
 -- Reporting view: per-arm results used by the UI.
 -- ---------------------------------------------------------------------------
 DROP VIEW IF EXISTS arm_stats;

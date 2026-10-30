@@ -1,6 +1,9 @@
 import type { Page } from 'playwright';
 import type { Registrar } from '../db.js';
+import { createLogger } from '../logger.js';
 import type { Adapter, CartResult, SearchResult } from './types.js';
+
+const log = createLogger('adapter');
 
 export const humanPause = (min = 800, max = 2500) =>
   new Promise((r) => setTimeout(r, min + Math.random() * (max - min)));
@@ -14,7 +17,7 @@ export function urlFor(registrar: Registrar, domain: string): string {
 export async function dismissConsent(page: Page): Promise<void> {
   try {
     const btn = page.getByRole('button', { name: /^(accept( all)?( cookies)?|i agree|got it|allow all)$/i }).first();
-    if (await btn.isVisible({ timeout: 1500 })) await btn.click({ timeout: 2000 });
+    if (await btn.isVisible({ timeout: 1500 })) { await btn.click({ timeout: 2000 }); log.debug('cookie banner dismissed'); }
   } catch { /* no banner */ }
 }
 
@@ -30,11 +33,15 @@ export async function detectAvailability(page: Page, domain: string): Promise<bo
 }
 
 export async function openAndSearch(page: Page, registrar: Registrar, domain: string): Promise<SearchResult> {
-  await page.goto(urlFor(registrar, domain), { waitUntil: 'domcontentloaded', timeout: 45_000 });
-  await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+  const url = urlFor(registrar, domain);
+  log.debug('goto', { url });
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => log.debug('network not idle after 20s, continuing'));
   await dismissConsent(page);
   await humanPause(1500, 3500); // time to "read" the results
-  return { siteSaysAvailable: await detectAvailability(page, domain) };
+  const available = await detectAvailability(page, domain);
+  log.debug('availability heuristic', { domain, available: available ?? 'unknown' });
+  return { siteSaysAvailable: available };
 }
 
 export interface CartAdapterOptions {
@@ -61,8 +68,10 @@ export function makeCartAdapter(opts: CartAdapterOptions): Adapter {
         button = page.getByRole('button', { name: opts.addToCart }).first(); // fallback: first on page
       }
       if (!(await button.isVisible({ timeout: 3000 }).catch(() => false))) {
+        log.warn('add-to-cart button not found', { domain, pattern: String(opts.addToCart) });
         return { confirmed: false, notes: 'add-to-cart button not found (selectors need tuning?)' };
       }
+      log.debug('add-to-cart button found', { domain });
       await humanPause(600, 1500);
       await button.click({ timeout: 10_000 });
       await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
@@ -70,6 +79,7 @@ export function makeCartAdapter(opts: CartAdapterOptions): Adapter {
 
       const body = (await page.evaluate(() => document.body.innerText).catch(() => '')).toLowerCase();
       const confirmed = opts.confirm.test(body) || page.url().toLowerCase().includes('cart');
+      log.debug('cart confirmation check', { confirmed, url: page.url().slice(0, 120) });
       return { confirmed, notes: confirmed ? undefined : 'clicked, but no cart confirmation detected' };
     },
 

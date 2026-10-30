@@ -43,6 +43,7 @@ services:
       MAX_DELAY_SEC: ${MAX_DELAY_SEC:-420}
       MONITOR_DAYS: ${MONITOR_DAYS:-90}
       CLEAR_CART: ${CLEAR_CART:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - ./data:/data
     depends_on:

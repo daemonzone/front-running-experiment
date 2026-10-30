@@ -61,6 +61,7 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `doc
 | `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (only for registrars with `requires_login`) |
 | `log-manual <domain> <action> [notes]` | Record a search you did by hand when an adapter breaks. The action must match the assignment |
 | `manifest` | Write `data/manifests/manifest-<ts>.txt`: hash of the arm assignments (the pre-registration) + SHA-256 of every screenshot. Then run `ots stamp <file>` |
+| `runs [n]` | Last `n` job runs (what ran, when, how it ended, counters) |
 | `status` | Per-arm table |
 | `scheduler` | Long-running cron (what the container does) |
 
@@ -127,6 +128,124 @@ Edit `web/src/lib/site.ts` (author, contact, start date, repo URL) before publis
 - **1st, 05:10** — `generate`: the new cohort. Months are UTC calendar months. The UI's month picker (default: current month, or *All time*) scopes Results, Generation and Names; the hero box always shows the all-time total.
 - Names keep being monitored for `MONITOR_DAYS` (default 90) after their search, so a month's *live* numbers can grow after its snapshot.
 - Group size: `NAMES_PER_ARM` is per **(registrar, action)** group, so 3 registrars × 2 actions + control = 35 names/month at the default.
+
+## Running the worker manually
+
+The scheduler container does all of this on its own; run things by hand when you want to test, debug or force a step.
+
+**Before you start** (once): apply the schema to an existing database so the `job_runs` table exists (fresh volumes get it automatically):
+
+```bash
+docker compose exec -T db psql -U frontrunning -d frontrunning < db/schema.sql
+```
+
+**Stop the scheduler while you work**, so nothing else searches at the same time (a manual run also refuses to start while another run is marked as running; `--force` overrides):
+
+```bash
+docker compose stop worker
+```
+
+### Two ways to run a command
+
+| | Command | Browser |
+|---|---|---|
+| **In Docker** | `docker compose run --rm worker npx tsx src/cli.ts <command> [flags]` | headless |
+| **On your Mac** (best for validating the registrar adapters) | `cd worker && npm run cli -- <command> [flags]` | `--headed` shows the window |
+
+Set up the Mac route once:
+
+```bash
+cd worker
+npm install && npx playwright install chromium
+export DATABASE_URL=postgres://frontrunning:frontrunning@localhost:15432/frontrunning
+export DATA_DIR=../data
+```
+
+Handy alias for the Docker route: `alias fr='docker compose run --rm worker npx tsx src/cli.ts'`, then `fr runs`, `fr monitor -v`, etc.
+
+### Suggested first run
+
+Do the first trial on throw-away data: **a name that was searched is exposed and can't be reused as a clean experiment name**, so adapter testing burns names. Use a tiny cohort and wipe it afterwards.
+
+```bash
+# 1. a tiny trial cohort: 1 name per group = 7 names
+NAMES_PER_ARM=1 fr generate -v               # Docker route; on the Mac: NAMES_PER_ARM=1 npm run cli -- generate -v
+fr status                                    # 7 groups, 1 name each
+
+# 2. one real search, watching the browser (Mac route)
+npm run cli -- search 1 --headed --verbose
+#    then check: the log lines, data/screenshots/, data/screenshots/errors/ (failures), and:
+fr runs 5
+
+# 3. RDAP check of what is being monitored
+fr monitor -v
+
+# 4. repeat step 2 until every registrar/action works (search_only and search_cart), tweaking
+#    worker/src/adapters/<registrar>.ts. If a site blocks the automation, do it by hand:
+fr log-manual <domain> <search_only|search_cart> "searched by hand"
+
+# 5. wipe the trial data and start for real
+docker compose exec -T db psql -U frontrunning -d frontrunning -c \
+  "TRUNCATE rdap_checks, search_log, name_candidates, cohort_snapshots, domains, cohorts, job_runs RESTART IDENTITY CASCADE;"
+rm -rf data/screenshots data/logs
+fr generate                                  # the real cohort (NAMES_PER_ARM=5); or wait for the 1st
+docker compose up -d worker                  # hand over to the scheduler
+docker compose logs -f worker
+```
+
+Other commands: `fr consolidate [YYYY-MM]` (freeze a month), `fr manifest` (hash assignments + screenshots, then `ots stamp <file>`), `fr generate 2026-12` (a specific month).
+
+### Flags
+
+| Flag | Effect |
+|---|---|
+| `-v`, `--verbose` | debug logging: browser navigation, RDAP lookups, selector and cart checks |
+| `--quiet` | warnings and errors only |
+| `--headed` | show the browser window (Mac route only; Docker has no display) |
+| `--force` | run even if another job is marked as running |
+| `--no-file` | don't write the log file |
+
+## Logging: following what the worker does
+
+Every line goes to the console (`docker compose logs -f worker`) **and** to `data/logs/worker-YYYY-MM-DD.log`:
+
+```
+2026-11-01T04:10:03.120Z INFO  [generate#12] candidate accepted name=zheoli.com action=search_cart registrar=namecheap left=29 tried=3
+ ^ UTC time                ^level ^[job#run-id:domain]  ^message              ^key=value details
+```
+
+Levels: `debug` (only with `-v` / `LOG_LEVEL=debug`), `info`, `warn`, `error`. Each job run gets an id (`search#12`) and a row in `job_runs`, which `runs` prints and which you can also query:
+
+```sql
+SELECT id, job, trigger, status, started_at, finished_at, summary, error FROM job_runs ORDER BY id DESC LIMIT 20;
+```
+
+Lines worth knowing:
+
+| Message | Meaning |
+|---|---|
+| `worker starting`, `scheduled … next_run=` | scheduler boot: config, state, when each job fires next (UTC) |
+| `trigger job=… trigger=cron/startup` | a scheduled job is starting (`startup` = catch-up at boot) |
+| `heartbeat` (hourly) | the worker is alive |
+| `candidate accepted` / `candidate rejected` | name generation: the RDAP result for each candidate |
+| `cohort complete` / `cohort incomplete` | generation finished, with the assignments hash; incomplete means re-run to top up |
+| `pending searches` | how many searches are waiting and how many this run will do |
+| `pausing like a human would` | the delay between searches |
+| `step: opening search page` → `step: search done` → `step: adding to cart` → `step: cart result` | what the browser is doing |
+| `SEARCH OK, now monitoring` | the exposure counted; the name enters its monitoring window |
+| `search NOT counted: cart add unconfirmed` | cart step failed; will retry (max 3 attempts, then the name is marked `failed`) |
+| `search failed` + `failure screenshot saved` | an error; open the screenshot in `data/screenshots/errors/` to see the page the adapter saw |
+| `DOMAIN REGISTERED` | RDAP shows a monitored name as registered; attributed to the registrar it was searched on |
+| `check inconclusive` | RDAP didn't answer cleanly; retried at the next run |
+| `snapshot taken` | month consolidated |
+| `skipped, another job is running` | a scheduled job found the previous one still busy |
+
+Environment: `LOG_LEVEL=debug|info|warn|error` (default `info`), `LOG_FILE=false` to disable the log file.
+
+**Common problems**
+- *"another run is in progress"*: the scheduler container is mid-run. `docker compose stop worker`, or `--force`.
+- *`add-to-cart button not found`*: the page markup differs from the adapter's guess. Run with `--headed -v`, look at the failure screenshot, adjust the regex in the adapter.
+- *Job stuck as `running` after a crash*: the scheduler marks such rows `aborted` when it restarts; for manual runs use `--force`.
 
 ## License
 

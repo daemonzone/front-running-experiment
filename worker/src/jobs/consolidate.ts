@@ -1,16 +1,17 @@
 import { createHash } from 'node:crypto';
 import { q } from '../db.js';
+import { createLogger, type Logger } from '../logger.js';
 import { monthKey, monthStart, prevMonth } from '../month.js';
 
 /**
  * Freeze a cohort's results as an immutable snapshot (run on the 1st for the previous month).
  * Names stay monitored for the whole window afterwards, so live numbers may still grow.
  */
-export async function consolidate(month: Date = prevMonth()): Promise<void> {
+export async function consolidate(month: Date = prevMonth(), log: Logger = createLogger('consolidate')): Promise<Record<string, unknown>> {
   const cohort = monthKey(monthStart(month));
   const [c] = await q<{ consolidated_at: Date | null }>('SELECT consolidated_at FROM cohorts WHERE month = $1', [cohort]);
-  if (!c) { console.log(`[consolidate] no cohort for ${cohort}, nothing to do`); return; }
-  if (c.consolidated_at) { console.log(`[consolidate] ${cohort} already consolidated`); return; }
+  if (!c) { log.info('no cohort for that month, nothing to do', { cohort }); return { cohort, snapshot: false }; }
+  if (c.consolidated_at) { log.info('already consolidated', { cohort }); return { cohort, snapshot: false }; }
 
   const arms = await q(
     `SELECT COALESCE(r.name, 'Control') AS registrar, d.assigned_action AS action, COUNT(*)::int AS names,
@@ -34,12 +35,16 @@ export async function consolidate(month: Date = prevMonth()): Promise<void> {
      VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (cohort) DO NOTHING`,
     [cohort, totalNames, totalRegistered, JSON.stringify(arms), JSON.stringify(registered), sha]);
   await q('UPDATE cohorts SET consolidated_at = now() WHERE month = $1', [cohort]);
-  console.log(`[consolidate] ${cohort}: ${totalRegistered}/${totalNames} registered, snapshot sha256 ${sha}`);
+  log.info('snapshot taken', { cohort, registered: totalRegistered, names: totalNames, sha256: sha });
+  return { cohort, snapshot: true, names: totalNames, registered: totalRegistered };
 }
 
 /** Catch-up for a worker that was down on the 1st: consolidate every finished month still open. */
-export async function consolidateDue(): Promise<void> {
+export async function consolidateDue(log: Logger = createLogger('consolidate')): Promise<Record<string, unknown>> {
   const due = await q<{ month: string }>(
     `SELECT month FROM cohorts WHERE consolidated_at IS NULL AND month < $1 ORDER BY month`, [monthKey(monthStart())]);
-  for (const c of due) await consolidate(new Date(`${c.month}T00:00:00Z`));
+  log.info('finished months awaiting consolidation', { count: due.length });
+  let done = 0;
+  for (const c of due) { const r = await consolidate(new Date(`${c.month}T00:00:00Z`), log); if (r.snapshot) done++; }
+  return { due: due.length, snapshots: done };
 }

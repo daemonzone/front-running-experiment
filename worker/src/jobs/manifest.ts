@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import { q } from '../db.js';
+import { createLogger, type Logger } from '../logger.js';
 
 const sha = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 
@@ -12,7 +13,7 @@ const sha = (b: Buffer | string) => createHash('sha256').update(b).digest('hex')
  *  - a hash of every screenshot
  * Then run `ots stamp <file>` (pip install opentimestamps-client) and publish file + .ots.
  */
-export async function manifest(): Promise<void> {
+export async function manifest(log: Logger = createLogger('manifest')): Promise<Record<string, unknown>> {
   const rows = await q<{ name: string; action: string; registrar: string | null; cohort: string }>(
     `SELECT d.name, d.assigned_action AS action, r.slug AS registrar, to_char(d.cohort, 'YYYY-MM') AS cohort
        FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id ORDER BY d.name`);
@@ -41,5 +42,7 @@ export async function manifest(): Promise<void> {
   await mkdir(dir, { recursive: true });
   const file = path.join(dir, `manifest-${stamp.replace(/[:.]/g, '-')}.txt`);
   await writeFile(file, out);
-  console.log(`wrote ${file}\nassignments-sha256: ${sha(canonical)}\nNext: ots stamp "${file}"`);
+  log.info('manifest written', { file, domains: rows.length, screenshots: shots.length, assignments_sha256: sha(canonical) });
+  log.info(`next: ots stamp "${file}"`);
+  return { file, domains: rows.length, screenshots: shots.length };
 }

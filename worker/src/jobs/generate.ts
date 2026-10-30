@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import { config } from '../config.js';
 import { pool, q, type Action, type Registrar } from '../db.js';
+import { createLogger, type Logger } from '../logger.js';
 import { monthKey, monthStart } from '../month.js';
 import { generateLabel, weightedTld } from '../namegen.js';
 import { rdapLookup, rdapPause } from '../rdap.js';
 
-interface Arm { registrarId: number | null; action: Action; need: number }
+interface Arm { registrarId: number | null; slug: string; action: Action; need: number }
 
 /** Every (registrar, action) combination the registrars support, plus the no_search control. */
 async function loadArms(cohort: string, perArm: number): Promise<Arm[]> {
@@ -18,10 +19,10 @@ async function loadArms(cohort: string, perArm: number): Promise<Arm[]> {
 
   const arms: Arm[] = [];
   for (const r of registrars) {
-    arms.push({ registrarId: r.id, action: 'search_only', need: need(r.id, 'search_only') });
-    if (r.supports_cart) arms.push({ registrarId: r.id, action: 'search_cart', need: need(r.id, 'search_cart') });
+    arms.push({ registrarId: r.id, slug: r.slug, action: 'search_only', need: need(r.id, 'search_only') });
+    if (r.supports_cart) arms.push({ registrarId: r.id, slug: r.slug, action: 'search_cart', need: need(r.id, 'search_cart') });
   }
-  arms.push({ registrarId: null, action: 'no_search', need: need(null, 'no_search') });
+  arms.push({ registrarId: null, slug: 'control', action: 'no_search', need: need(null, 'no_search') });
   return arms;
 }
 
@@ -30,16 +31,19 @@ async function loadArms(cohort: string, perArm: number): Promise<Arm[]> {
  * Idempotent: re-running only tops up groups that are short. Every candidate tried is logged
  * in name_candidates (accepted or not), so the whole selection process is auditable.
  */
-export async function generate(month: Date = monthStart()): Promise<void> {
+export async function generate(month: Date = monthStart(), log: Logger = createLogger('generate')): Promise<Record<string, unknown>> {
   const cohort = monthKey(monthStart(month));
   const perArm = config.namesPerArm;
   await q(`INSERT INTO cohorts (month, names_per_arm) VALUES ($1, $2) ON CONFLICT (month) DO NOTHING`, [cohort, perArm]);
 
   const arms = await loadArms(cohort, perArm);
   const missing = () => arms.reduce((s, a) => s + a.need, 0);
-  console.log(`[generate] cohort ${cohort}: ${perArm} per group, ${arms.length} groups, ${missing()} names to go`);
+  log.info('cohort', { cohort, per_group: perArm, groups: arms.length, names_to_go: missing() });
+  for (const a of arms) log.debug('group quota', { registrar: a.slug, action: a.action, need: a.need });
 
   let attempts = 0;
+  let rejected = 0;
+  let accepted = 0;
   const maxAttempts = Math.max(50, missing() * 25);
   while (missing() > 0 && attempts < maxAttempts) {
     attempts++;
@@ -50,6 +54,8 @@ export async function generate(month: Date = monthStart()): Promise<void> {
     const dup = await q('SELECT 1 FROM name_candidates WHERE label = $1 LIMIT 1', [label]);
     if (dup.length) {
       await q(`INSERT INTO name_candidates (cohort, name, label, tld, outcome) VALUES ($1,$2,$3,$4,'duplicate_label')`, [cohort, name, label, tld]);
+      log.debug('candidate skipped', { name, outcome: 'duplicate_label' });
+      rejected++;
       continue;
     }
 
@@ -67,7 +73,8 @@ export async function generate(month: Date = monthStart()): Promise<void> {
 
       if (outcome !== 'available') {
         await client.query('COMMIT');
-        console.log(`  skip ${name} (${outcome})`);
+        log.info('candidate rejected', { name, outcome, http: rdap.httpStatus ?? 'none', error: rdap.error });
+        rejected++;
         continue;
       }
 
@@ -92,7 +99,8 @@ export async function generate(month: Date = monthStart()): Promise<void> {
       }
       await client.query('COMMIT');
       arm.need--;
-      console.log(`  + ${name}  -> ${arm.action}${arm.registrarId ? ` @registrar ${arm.registrarId}` : ''}`);
+      accepted++;
+      log.info('candidate accepted', { name, action: arm.action, registrar: arm.slug, left: missing(), tried: attempts });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;
@@ -102,8 +110,8 @@ export async function generate(month: Date = monthStart()): Promise<void> {
   }
 
   if (missing() > 0) {
-    console.log(`[generate] cohort ${cohort} still short of ${missing()} names after ${attempts} candidates; re-run to top up`);
-    return;
+    log.warn('cohort incomplete, re-run to top up', { cohort, short_by: missing(), tried: attempts });
+    return { cohort, candidates: attempts, accepted, rejected, complete: false };
   }
 
   // Pre-registration: hash of the final assignment list for this cohort.
@@ -113,5 +121,6 @@ export async function generate(month: Date = monthStart()): Promise<void> {
   const canonical = rows.map((r) => `${r.name}\t${r.action}\t${r.registrar ?? '-'}`).join('\n');
   const sha = createHash('sha256').update(canonical).digest('hex');
   await q(`UPDATE cohorts SET generated_at = COALESCE(generated_at, now()), assignments_sha256 = $2 WHERE month = $1`, [cohort, sha]);
-  console.log(`[generate] cohort ${cohort} complete after ${attempts} candidates; assignments sha256 ${sha}`);
+  log.info('cohort complete', { cohort, tried: attempts, assignments_sha256: sha });
+  return { cohort, candidates: attempts, accepted, rejected, complete: true };
 }

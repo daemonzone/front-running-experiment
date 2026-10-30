@@ -2,10 +2,11 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
 import { getAdapter } from '../adapters/index.js';
 import { config } from '../config.js';
 import { q, type DomainRow, type Registrar } from '../db.js';
+import { createLogger, isDebug, type Logger } from '../logger.js';
 import { sleep } from '../rdap.js';
 
 const clearCart = (process.env.CLEAR_CART ?? 'false') === 'true';
@@ -16,10 +17,41 @@ async function egressIp(): Promise<string | null> {
 
 const statePath = (slug: string) => path.join(config.dataDir, 'state', `${slug}.json`);
 
-async function runOne(browser: Browser, d: DomainRow, r: Registrar, ip: string | null): Promise<void> {
+/** Browser-level detail, only with --verbose / LOG_LEVEL=debug. */
+function traceBrowser(page: Page, log: Logger) {
+  page.on('response', (r) => {
+    if (r.request().resourceType() === 'document') log.debug('document response', { status: r.status(), url: r.url().slice(0, 140) });
+  });
+  page.on('requestfailed', (r) => {
+    const reason = r.failure()?.errorText;
+    if (reason !== 'net::ERR_ABORTED') log.debug('request failed', { url: r.url().slice(0, 120), reason }); // aborted = harmless prefetch cancellations
+  });
+  page.on('console', (m) => { if (m.type() === 'error') log.debug('browser console error', { text: m.text().slice(0, 160) }); });
+  page.on('framenavigated', (f) => { if (f === page.mainFrame()) log.debug('navigated', { url: f.url().slice(0, 140) }); });
+}
+
+/** Screenshot of a failed attempt: the quickest way to see why a selector didn't match. */
+async function failureShot(page: Page, d: DomainRow, log: Logger): Promise<string | null> {
+  try {
+    const dir = path.join(config.dataDir, 'screenshots', 'errors');
+    await mkdir(dir, { recursive: true });
+    const file = path.join(dir, `${d.name}-${Date.now()}.png`);
+    await page.screenshot({ path: file });
+    log.info('failure screenshot saved', { file, url: page.url().slice(0, 140), title: await page.title().catch(() => '') });
+    return file;
+  } catch { return null; }
+}
+
+async function runOne(browser: Browser, d: DomainRow, r: Registrar, ip: string | null, base: Logger): Promise<boolean> {
+  const log = base.child(d.name);
+  const t0 = Date.now();
   const adapter = getAdapter(r.adapter_key);
   const action = d.assigned_action;
   if (action === 'search_cart' && !adapter.addToCart) throw new Error(`${r.slug} adapter has no cart support`);
+
+  const [{ n: prior }] = await q<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM search_log WHERE domain_id = $1 AND outcome = 'error'`, [d.id]);
+  log.info('search start', { registrar: r.slug, action, attempt: prior + 1, of: 3 });
 
   const logId = (await q<{ id: number }>(
     `INSERT INTO search_log (domain_id, registrar_id, action, outcome, egress_ip)
@@ -28,25 +60,36 @@ async function runOne(browser: Browser, d: DomainRow, r: Registrar, ip: string |
 
   // Anonymous registrars get a fresh visitor each time; login-only ones reuse the saved session.
   const useState = r.requires_login && existsSync(statePath(r.slug));
+  log.debug('new browser context', { locale: config.locale, saved_session: useState });
   const context = await browser.newContext({
     locale: config.locale,
     viewport: { width: 1366, height: 850 },
     ...(useState ? { storageState: statePath(r.slug) } : {}),
   });
   const page = await context.newPage();
+  if (isDebug()) traceBrowser(page, log);
 
   try {
     const ua = await page.evaluate(() => navigator.userAgent);
+    log.debug('user agent', { ua });
+
+    log.info('step: opening search page', { registrar: r.slug });
     const s = await adapter.search(page, d.name, r);
+    log.info('step: search done', { site_says_available: s.siteSaysAvailable ?? 'unknown', title: await page.title().catch(() => '') });
     let cartConfirmed: boolean | null = null;
     let cartCleared: boolean | null = null;
     let notes = s.notes ?? null;
 
     if (action === 'search_cart') {
+      log.info('step: adding to cart');
       const c = await adapter.addToCart!(page, d.name);
       cartConfirmed = c.confirmed;
       notes = [notes, c.notes].filter(Boolean).join('; ') || null;
-      if (clearCart && adapter.clearCart) cartCleared = await adapter.clearCart(page);
+      log.info('step: cart result', { confirmed: c.confirmed, notes: c.notes });
+      if (clearCart && adapter.clearCart) {
+        cartCleared = await adapter.clearCart(page);
+        log.info('step: cart cleared', { cleared: cartCleared });
+      }
     }
 
     const shotDir = path.join(config.dataDir, 'screenshots');
@@ -54,6 +97,7 @@ async function runOne(browser: Browser, d: DomainRow, r: Registrar, ip: string |
     const shot = path.join(shotDir, `${d.name}-${action}-${Date.now()}.png`);
     const buf = await page.screenshot({ path: shot });
     const sha = createHash('sha256').update(buf).digest('hex');
+    log.info('screenshot saved', { file: shot, sha256: sha.slice(0, 16) });
 
     // A search_cart whose cart add could not be confirmed is NOT a valid exposure: keep it pending.
     const valid = action !== 'search_cart' || cartConfirmed === true;
@@ -70,49 +114,60 @@ async function runOne(browser: Browser, d: DomainRow, r: Registrar, ip: string |
                 monitor_until = now() + make_interval(days => $2) WHERE id = $1`,
         [d.id, config.monitorDays],
       );
-      console.log(`  ✓ ${d.name} ${action} @ ${r.slug} (site says available: ${s.siteSaysAvailable})`);
+      log.info('SEARCH OK, now monitoring', { registrar: r.slug, action, ms: Date.now() - t0, monitor_days: config.monitorDays });
     } else {
-      console.log(`  ✗ ${d.name} ${action} @ ${r.slug}: ${notes}`);
+      await failureShot(page, d, log);
+      log.warn('search NOT counted: cart add unconfirmed, will retry', { registrar: r.slug, notes, ms: Date.now() - t0 });
     }
     if (r.requires_login) await context.storageState({ path: statePath(r.slug) });
+    return valid;
   } catch (e) {
     await q(`UPDATE search_log SET finished_at = now(), error = $2 WHERE id = $1`, [logId, (e as Error).message]);
-    console.log(`  ✗ ${d.name} ${action} @ ${r.slug}: ${(e as Error).message}`);
+    log.error('search failed', { registrar: r.slug, action, error: (e as Error).message, ms: Date.now() - t0 });
+    log.debug('stack', { stack: (e as Error).stack });
+    await failureShot(page, d, log);
+    return false;
   } finally {
     await context.close();
   }
 }
 
 /** Process up to `limit` pending domains, with long random pauses between them. */
-export async function search(limit = config.searchesPerRun): Promise<void> {
+export async function search(limit = config.searchesPerRun, log: Logger = createLogger('search')): Promise<Record<string, unknown>> {
   // Give up on domains that already failed 3 times, so a broken adapter doesn't loop forever.
-  await q(`UPDATE domains d SET status = 'failed' WHERE status = 'pending_search'
-             AND (SELECT COUNT(*) FROM search_log s WHERE s.domain_id = d.id AND s.outcome = 'error') >= 3`);
+  const gaveUp = await q(`UPDATE domains d SET status = 'failed' WHERE status = 'pending_search'
+             AND (SELECT COUNT(*) FROM search_log s WHERE s.domain_id = d.id AND s.outcome = 'error') >= 3 RETURNING name`);
+  if (gaveUp.length) log.warn('gave up after 3 failed attempts', { domains: gaveUp.map((g: any) => g.name).join(',') });
 
-  const rows = await q<DomainRow & { slug: string }>(
+  const [{ pending }] = await q<{ pending: number }>(`SELECT COUNT(*)::int AS pending FROM domains WHERE status = 'pending_search'`);
+  const rows = await q<DomainRow>(
     `SELECT d.id, d.name, d.label, d.tld, d.assigned_action, d.assigned_registrar_id
        FROM domains d WHERE d.status = 'pending_search' ORDER BY random() LIMIT $1`, [limit]);
-  if (!rows.length) { console.log('[search] nothing pending'); return; }
+  log.info('pending searches', { pending, this_run: rows.length, limit });
+  if (!rows.length) return { pending, attempted: 0, ok: 0, failed: 0 };
 
   const registrars = await q<Registrar>('SELECT * FROM registrars WHERE enabled');
   const ip = await egressIp();
+  log.info('launching browser', { headless: config.headless, egress_ip: ip ?? 'unknown', locale: config.locale });
   const browser = await chromium.launch({ headless: config.headless });
-  console.log(`[search] ${rows.length} domains, headless=${config.headless}, ip=${ip}`);
+  let ok = 0, failed = 0;
   try {
     for (let i = 0; i < rows.length; i++) {
       const d = rows[i];
       const r = registrars.find((x) => x.id === d.assigned_registrar_id);
-      if (!r) { console.log(`  skip ${d.name}: registrar disabled/missing`); continue; }
+      if (!r) { log.warn('skipped: registrar disabled or missing', { domain: d.name }); failed++; continue; }
       if (i > 0) {
         const wait = config.minDelaySec + Math.random() * (config.maxDelaySec - config.minDelaySec);
-        console.log(`  … waiting ${Math.round(wait)}s`);
+        log.info('pausing like a human would', { seconds: Math.round(wait), next: i + 1, of: rows.length });
         await sleep(wait * 1000);
       }
-      await runOne(browser, d, r, ip);
+      (await runOne(browser, d, r, ip, log)) ? ok++ : failed++;
     }
   } finally {
     await browser.close();
+    log.debug('browser closed');
   }
+  return { pending, attempted: rows.length, ok, failed };
 }
 
 /** Interactive: open a headed browser, let the user log in, save the session. (Run on the host.) */
@@ -128,11 +183,11 @@ export async function login(slug: string): Promise<void> {
   await mkdir(path.dirname(statePath(slug)), { recursive: true });
   await writeFile(statePath(slug), JSON.stringify(await context.storageState()));
   await browser.close();
-  console.log(`saved ${statePath(slug)}`);
+  createLogger('login').info('session saved', { file: statePath(slug) });
 }
 
 /** Record a search you performed by hand (fallback when an adapter breaks). */
-export async function logManual(domain: string, action: string, notes?: string): Promise<void> {
+export async function logManual(domain: string, action: string, notes?: string, log: Logger = createLogger('log-manual')): Promise<Record<string, unknown>> {
   const [d] = await q<DomainRow>('SELECT * FROM domains WHERE name = $1', [domain.toLowerCase()]);
   if (!d) throw new Error(`unknown domain ${domain}`);
   if (action !== d.assigned_action) throw new Error(`${domain} is assigned to ${d.assigned_action}, not ${action}`);
@@ -141,7 +196,6 @@ export async function logManual(domain: string, action: string, notes?: string):
      VALUES ($1,$2,$3,'ok', now(), TRUE, $4)`, [d.id, d.assigned_registrar_id, action, notes ?? null]);
   await q(`UPDATE domains SET status = 'monitoring', searched_at = now(),
                   monitor_until = now() + make_interval(days => $2) WHERE id = $1`, [d.id, config.monitorDays]);
-  console.log(`logged manual ${action} for ${domain}`);
+  log.info('manual search recorded, now monitoring', { domain, action });
+  return { domain, action };
 }
-
-

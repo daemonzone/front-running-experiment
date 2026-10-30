@@ -1,57 +1,129 @@
 import cron from 'node-cron';
 import { config } from './config.js';
 import { pool, q } from './db.js';
+import { createLogger, setLogFile, setLogLevel } from './logger.js';
 import { monthKey, monthStart, parseMonth } from './month.js';
 import { consolidate, consolidateDue } from './jobs/consolidate.js';
 import { generate } from './jobs/generate.js';
-import { login, logManual, search } from './jobs/search.js';
 import { manifest } from './jobs/manifest.js';
 import { monitor } from './jobs/monitor.js';
+import { abortOrphanedRuns, runJob, type Trigger } from './jobs/runner.js';
+import { login, logManual, search } from './jobs/search.js';
 
-const [cmd, ...args] = process.argv.slice(2);
+// ---- flags: --verbose/-v  --quiet  --headed  --force  --no-file
+const raw = process.argv.slice(2);
+const flags = new Set(raw.filter((a) => a.startsWith('-')));
+const [cmd, ...args] = raw.filter((a) => !a.startsWith('-'));
+if (flags.has('--verbose') || flags.has('-v')) setLogLevel('debug');
+if (flags.has('--quiet')) setLogLevel('warn');
+if (flags.has('--no-file')) setLogFile(false);
+if (flags.has('--headed')) config.headless = false;
+const force = flags.has('--force');
 
-// Jobs never overlap (a search run can last many minutes because of the human-like delays).
-let busy = false;
-function guarded(name: string, fn: () => Promise<void>) {
-  return async () => {
-    if (busy) { console.log(`[scheduler] ${name} skipped, another job is running`); return; }
-    busy = true;
-    try { await fn(); } catch (e) { console.error(`[${name}] failed:`, e); } finally { busy = false; }
-  };
+const log = createLogger('cli');
+
+// ---- scheduler -----------------------------------------------------------------------------
+async function stateSnapshot(slog = createLogger('scheduler')) {
+  const rows = await q<{ status: string; n: number }>(`SELECT status::text AS status, COUNT(*)::int AS n FROM domains GROUP BY status`);
+  const [c] = await q<{ n: number }>(`SELECT COUNT(*)::int AS n FROM cohorts`);
+  slog.info('current state', { cohorts: c.n, ...Object.fromEntries(rows.map((r) => [r.status, r.n])) });
 }
 
 async function scheduler() {
-  console.log(`[scheduler] search="${config.cronSearch}" monitor="${config.cronMonitor}" consolidate="${config.cronConsolidate}" generate="${config.cronGenerate}" TZ=${process.env.TZ ?? 'UTC'}`);
-  cron.schedule(config.cronSearch, guarded('search', () => search()));
-  cron.schedule(config.cronMonitor, guarded('monitor', () => monitor()));
-  cron.schedule(config.cronConsolidate, guarded('consolidate', () => consolidateDue()));
-  cron.schedule(config.cronGenerate, guarded('generate', () => generate()));
+  const slog = createLogger('scheduler');
+  const startedAt = Date.now();
+  await abortOrphanedRuns();
+
+  slog.info('worker starting', {
+    tz: process.env.TZ ?? 'UTC', headless: config.headless, names_per_group: config.namesPerArm,
+    monitor_days: config.monitorDays, searches_per_run: config.searchesPerRun,
+    pause_s: `${config.minDelaySec}-${config.maxDelaySec}`, db_host: new URL(config.databaseUrl).host,
+    data_dir: config.dataDir, clear_cart: process.env.CLEAR_CART ?? 'false',
+  });
+  await stateSnapshot(slog);
+
+  // Jobs never overlap (a search run can last many minutes because of the human-like delays).
+  let busy: string | null = null;
+  const guarded = (name: string, fn: (t: Trigger) => Promise<unknown>, trigger: Trigger = 'cron') => async () => {
+    if (busy) { slog.warn('skipped, another job is running', { job: name, running: busy }); return; }
+    busy = name;
+    slog.info('trigger', { job: name, trigger });
+    try { await fn(trigger); } catch { /* runJob already logged the failure */ } finally { busy = null; }
+  };
+
+  const tasks = [
+    ['search', config.cronSearch, guarded('search', (t) => runJob('search', (l) => search(undefined, l), { trigger: t }))],
+    ['monitor', config.cronMonitor, guarded('monitor', (t) => runJob('monitor', (l) => monitor(l), { trigger: t }))],
+    ['consolidate', config.cronConsolidate, guarded('consolidate', (t) => runJob('consolidate', (l) => consolidateDue(l), { trigger: t }))],
+    ['generate', config.cronGenerate, guarded('generate', (t) => runJob('generate', (l) => generate(monthStart(), l), { trigger: t }))],
+  ] as const;
+  for (const [name, expr, fn] of tasks) {
+    const task = cron.schedule(expr, fn);
+    const next = (task as { getNextRun?: () => Date | null }).getNextRun?.();
+    slog.info('scheduled', { job: name, cron: expr, next_run: next ? next.toISOString() : undefined });
+  }
 
   // Catch-up if the worker was down on the 1st: freeze finished months, make sure this month exists.
-  await guarded('startup-catch-up', async () => {
-    await consolidateDue();
+  await guarded('startup-catch-up', async (t) => {
+    await runJob('consolidate', (l) => consolidateDue(l), { trigger: t });
     const [c] = await q('SELECT 1 FROM cohorts WHERE month = $1 AND generated_at IS NOT NULL', [monthKey(monthStart())]);
-    if (!c) await generate();
-  })();
+    if (c) slog.info('this month already has its cohort', { month: monthKey(monthStart()).slice(0, 7) });
+    else await runJob('generate', (l) => generate(monthStart(), l), { trigger: t });
+  }, 'startup')();
+
+  slog.info('idle, waiting for the next scheduled job');
+  setInterval(() => {
+    slog.info('heartbeat', { uptime_h: Math.round((Date.now() - startedAt) / 360000) / 10, busy: busy ?? 'no' });
+  }, 3600_000);
   await new Promise(() => {}); // keep alive
 }
 
+// ---- one-off commands ------------------------------------------------------------------------
+async function runs(n = 15) {
+  const rows = await q(
+    `SELECT id, job, trigger, status, to_char(started_at, 'MM-DD HH24:MI:SS') AS started,
+            ROUND(EXTRACT(EPOCH FROM (COALESCE(finished_at, now()) - started_at)))::int AS secs, summary, error
+       FROM job_runs ORDER BY id DESC LIMIT $1`, [n]);
+  console.table(rows.map((r: any) => ({ ...r, summary: r.summary ? JSON.stringify(r.summary) : '', error: r.error ?? '' })));
+}
+
 async function main() {
+  const once = <T extends Record<string, unknown> | void>(job: string, fn: Parameters<typeof runJob<T>>[1]) => runJob(job, fn, { force });
   switch (cmd) {
-    case 'generate': await generate(parseMonth(args[0])); break;
-    case 'consolidate': args[0] ? await consolidate(parseMonth(args[0])) : await consolidateDue(); break;
-    case 'search': await search(args[0] ? Number(args[0]) : undefined); break;
-    case 'monitor': await monitor(); break;
+    case 'generate': await once('generate', (l) => generate(parseMonth(args[0]), l)); break;
+    case 'consolidate': await once('consolidate', (l) => (args[0] ? consolidate(parseMonth(args[0]), l) : consolidateDue(l))); break;
+    case 'search': await once('search', (l) => search(args[0] ? Number(args[0]) : undefined, l)); break;
+    case 'monitor': await once('monitor', (l) => monitor(l)); break;
+    case 'manifest': await once('manifest', (l) => manifest(l)); break;
+    case 'log-manual': await once('log-manual', (l) => logManual(args[0], args[1], args.slice(2).join(' ') || undefined, l)); break;
     case 'login': await login(args[0]); break;
-    case 'log-manual': await logManual(args[0], args[1], args.slice(2).join(' ') || undefined); break;
-    case 'manifest': await manifest(); break;
+    case 'runs': await runs(args[0] ? Number(args[0]) : undefined); break;
+    case 'status': await stateSnapshot(log); console.table(await q('SELECT * FROM arm_stats')); break;
     case 'scheduler': await scheduler(); break;
-    case 'status': console.table(await q('SELECT * FROM arm_stats')); break;
     default:
-      console.log(`usage: cli <generate [YYYY-MM] | consolidate [YYYY-MM] | search [n] | monitor | login <registrar> | log-manual <domain> <action> [notes] | status | manifest | scheduler>`);
+      console.log(`usage: cli <command> [flags]
+
+commands:
+  generate [YYYY-MM]     generate a month's cohort (default: current month)
+  search [n]             run up to n pending searches now (default ${config.searchesPerRun})
+  monitor                RDAP-check every monitored name
+  consolidate [YYYY-MM]  freeze finished months into snapshots
+  manifest               hash assignments + screenshots (then: ots stamp <file>)
+  log-manual <domain> <action> [notes]   record a search you did by hand
+  login <registrar>      save a browser session (run on the host)
+  runs [n]               last n job runs
+  status                 current state + per-group results
+  scheduler              long-running cron worker (what the container runs)
+
+flags:
+  -v, --verbose   debug logging (browser navigation, RDAP lookups, selectors)
+  --quiet         warnings and errors only
+  --headed        show the browser window (run on the host, not in Docker)
+  --force         run even if another job is marked as running
+  --no-file       don't write data/logs/worker-YYYY-MM-DD.log`);
   }
 }
 
 main()
-  .catch((e) => { console.error(e); process.exitCode = 1; })
+  .catch((e) => { log.error('command failed', { error: (e as Error).message }); process.exitCode = 1; })
   .finally(async () => { if (cmd !== 'scheduler') await pool.end(); });
