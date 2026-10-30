@@ -168,11 +168,11 @@ export default async function Generation({ searchParams }: { searchParams: Promi
                       <td className="muted">{c.recipe ?? '—'}</td>
                       <td><OutcomePill outcome={c.outcome} /></td>
                       <td>{c.http_status ?? '—'}</td>
-                      <td>{c.checked_at ? fmtDate(c.checked_at, true) : '—'}</td>
+                      <td className="nowrap">{c.checked_at ? fmtDate(c.checked_at, true) : '—'}</td>
                       <td>{c.action ? <>{c.registrar ?? 'Control'} <ActionIcon action={c.action as Action} /></> : <span className="muted">not used</span>}</td>
-                      <td>{c.rdap_url ? (
+                      <td className="nowrap">{c.rdap_url ? (
                         <a href={c.rdap_url} target="_blank" rel="noreferrer" title={c.outcome === 'available' ? 'Free: the registry will answer 404 (no such domain), which is the expected result' : 'Opens the registry record'}>
-                          Verify ↗{c.outcome === 'available' && <span className="muted"> (404 = free)</span>}
+                          Verify ↗
                         </a>
                       ) : ''}</td>
                     </tr>
