@@ -45,7 +45,7 @@ export default function Example() {
       </div>
 
       <div className="page-head">
-        <span className="eyebrow">Example report · 2027-04-12</span>
+        <span className="eyebrow">Example report · 12/04/2027</span>
         <h1>Results after 90 days</h1>
         <p className="lede">
           In this made-up scenario, names added to the cart at Registrar A were registered by a third party more often than
@@ -57,7 +57,7 @@ export default function Example() {
         <StatTile label="Names" value={300} hint="6 searched groups + control" />
         <StatTile label="Registered by others" value={9} hint="3.0% overall" />
         <StatTile label="Control registered" value="0 / 60" hint="near-zero baseline" />
-        <StatTile label="Started" value="2027-01-05" hint="90-day window" />
+        <StatTile label="Started" value="05/01/2027" hint="90-day window" />
       </div>
 
       <section className="section">
@@ -104,7 +104,7 @@ export default function Example() {
         <h2>Registrar response</h2>
         <div className="notice">
           <span className="muted">
-            [Registrar A was sent these findings on 2027-04-12 with a deadline of 2027-04-26. Their reply, unedited, would
+            [Registrar A was sent these findings on 12/04/2027 with a deadline of 26/04/2027. Their reply, unedited, would
             appear here. If there is no reply by the deadline, that is stated here too.]
           </span>
         </div>

@@ -42,10 +42,17 @@ export function niceMax(v: number, steps = [4, 8, 12, 20, 40, 60, 80, 100]): num
   return steps.find((s) => s >= v) ?? 100;
 }
 
+// All dates on the site are dd/mm/yyyy (times are 24 h, UTC unless stated). CSV exports stay ISO 8601.
+export const dmy = (d: Date, tz = 'UTC') =>
+  new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz }).format(d);
+export const hm = (d: Date, tz = 'UTC') =>
+  new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz }).format(d);
+
+/** 30/10/2026, or 30/10/2026 15:12 UTC with time. */
 export const fmtDate = (d: Date | string | null | undefined, withTime = false) => {
   if (!d) return '—';
-  const s = new Date(d).toISOString();
-  return withTime ? `${s.slice(0, 10)} ${s.slice(11, 16)} UTC` : s.slice(0, 10);
+  const x = new Date(d);
+  return withTime ? `${dmy(x)} ${hm(x)} UTC` : dmy(x);
 };
 
 /**
@@ -66,15 +73,18 @@ export function fmtSpan(days: number | null | undefined): string {
   return `${n} ${unit}${n === 1 ? '' : 's'} ${d < 0 ? 'earlier' : 'later'}`;
 }
 
-/** 2026-10-30 15:12 (UTC, no suffix: the column header says UTC). */
-export const fmtDateTime = (d: Date | string | null | undefined) =>
-  d ? new Date(d).toISOString().replace('T', ' ').slice(0, 16) : '—';
+/** 30/10/2026 15:12 (UTC; the column header says UTC). */
+export const fmtDateTime = (d: Date | string | null | undefined) => {
+  if (!d) return '—';
+  const x = new Date(d);
+  return `${dmy(x)} ${hm(x)}`;
+};
 
-/** Oct 30, 07:37 UTC */
+/** 30/10/2026 07:37 UTC */
 export const fmtWhen = (d: Date | string | null | undefined) => {
   if (!d) return '—';
-  const iso = new Date(d).toISOString();
-  return `${new Date(d).toLocaleString('en', { month: 'short', day: 'numeric', timeZone: 'UTC' })}, ${iso.slice(11, 16)} UTC`;
+  const x = new Date(d);
+  return `${dmy(x)} ${hm(x)} UTC`;
 };
 
 /**

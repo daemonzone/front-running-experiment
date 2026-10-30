@@ -1,15 +1,14 @@
-import { colorVar } from '@/lib/viz';
+import { colorVar, dmy, hm } from '@/lib/viz';
 import type { RdapInfo } from '@/lib/rdap';
 
 interface Search { registrar: string; colorKey: string; action: string; at: string | null; source: string | null }
 
-const cet = (iso: string) =>
-  new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' });
+const cet = (iso: string) => `${dmy(new Date(iso), 'Europe/Rome')} ${hm(new Date(iso), 'Europe/Rome')}`;
+const stamp = (iso: string) => `${dmy(new Date(iso))} ${hm(new Date(iso))} UTC`;
 const span = (ms: number) => {
   const m = Math.round(ms / 60000);
   return m >= 120 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${m} min`;
 };
-const stamp = (iso: string) => `${new Date(iso).toLocaleString('en', { day: 'numeric', month: 'short', timeZone: 'UTC' })}, ${iso.slice(11, 16)} UTC`;
 
 export function CaseStudy({ domain, searches, rdap }: { domain: string; searches: Search[]; rdap: RdapInfo | null }) {
   const timed = searches.find((x) => x.at);
