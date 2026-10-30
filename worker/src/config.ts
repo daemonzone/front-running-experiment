@@ -1,8 +1,11 @@
+import { fileURLToPath } from 'node:url';
+
 const int = (v: string | undefined, d: number) => (v && !Number.isNaN(Number(v)) ? Number(v) : d);
 
 export const config = {
   databaseUrl: process.env.DATABASE_URL ?? 'postgres://frontrunning:frontrunning@localhost:15432/frontrunning',
-  dataDir: process.env.DATA_DIR ?? './data',
+  // Default: <repo>/data, whatever directory the command is run from (Docker sets DATA_DIR=/data).
+  dataDir: process.env.DATA_DIR ?? fileURLToPath(new URL('../../data', import.meta.url)),
   headless: (process.env.HEADLESS ?? 'true') !== 'false',
   // 'chrome' = the real Google Chrome installed on this machine (macOS: /Applications/Google Chrome.app).
   // Unset = Playwright's bundled Chromium (what the Docker image uses).
