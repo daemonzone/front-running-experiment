@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import Link from 'next/link';
 import { ActionIcon, ActionLegend } from '@/components/ActionIcon';
 import { MonthPicker } from '@/components/MonthPicker';
@@ -18,6 +19,11 @@ export default async function Generation({ searchParams }: { searchParams: Promi
 
   const [cohort] = await q(
     `SELECT month, names_per_arm, generated_at, assignments_sha256, assignments_hashed_at, consolidated_at FROM cohorts WHERE month = $1::date`, [date]);
+  // Fingerprint of the list as it stands now (same canonical format the worker uses), to compare with the stored one.
+  const listRows = await q<{ name: string; action: string; registrar: string | null }>(
+    `SELECT d.name, d.assigned_action AS action, r.slug AS registrar
+       FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id WHERE d.cohort = $1::date ORDER BY d.name`, [date]);
+  const currentSha = createHash('sha256').update(listRows.map((r) => `${r.name}\t${r.action}\t${r.registrar ?? '-'}`).join('\n')).digest('hex');
   const [exposure] = await q<{ first: Date | null }>(
     `SELECT MIN(searched_at) AS first FROM domains WHERE cohort = $1::date AND assigned_action <> 'no_search' AND searched_at IS NOT NULL`, [date]);
   const perArm: number = cohort?.names_per_arm ?? 5;
@@ -78,8 +84,9 @@ export default async function Generation({ searchParams }: { searchParams: Promi
             const hashedAt = cohort.assignments_hashed_at ? new Date(cohort.assignments_hashed_at) : null;
             const firstSearch = exposure?.first ? new Date(exposure.first) : null;
             const before = hashedAt && (!firstSearch || hashedAt < firstSearch);
+            const matches = currentSha === cohort.assignments_sha256;
             return (
-              <div className={`notice ${before ? '' : 'notice--warn'}`}>
+              <div className={`notice ${before && matches ? '' : 'notice--warn'}`}>
                 <b>Assignment fingerprint.</b> A SHA-256 hash of this month&apos;s list of which name goes to which group. If even one line changes, the hash changes, so it proves the list was fixed:
                 <div><code style={{ wordBreak: 'break-all' }}>{cohort.assignments_sha256}</code></div>
                 <p className="fp-line">
@@ -88,9 +95,15 @@ export default async function Generation({ searchParams }: { searchParams: Promi
                     ? <b>✓ Computed before the first search{firstSearch ? '' : ' (none yet)'}.</b>
                     : <b>⚠ Computed after searches began{firstSearch ? ` (first search ${fmtDate(firstSearch, true)})` : ''}: it documents the list as it stands, but it is not a pre-registration.</b>}
                 </p>
-                <p className="fp-line">
-                  To check it yourself, download <a href={`/api/export?table=assignments&month=${sel}`}>the list</a> and run <code>shasum -a 256 assignments-{sel}.txt</code>: the result must equal the hash above.
-                </p>
+                {matches ? (
+                  <p className="fp-line">
+                    <b>✓ Matches the current list.</b> To check it yourself, download <a href={`/api/export?table=assignments&month=${sel}`}>the list</a> and run <code>shasum -a 256 assignments-{sel}.txt</code>: the result must equal the hash above.
+                  </p>
+                ) : (
+                  <p className="fp-line">
+                    <b>⚠ The list was edited after this fingerprint was computed</b>, so it no longer matches the current names (the current list hashes to <code style={{ wordBreak: 'break-all' }}>{currentSha}</code>; <a href={`/api/export?table=assignments&month=${sel}`}>download it</a> to check). The original list can&apos;t be reproduced exactly: a name was replaced and another removed after generation.
+                  </p>
+                )}
               </div>
             );
           })()}
