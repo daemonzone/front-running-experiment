@@ -194,7 +194,7 @@ docker compose logs -f worker
 
 `search` on an empty database now tells you why nothing happened (no names yet → run `generate` or `run`).
 
-Other commands: `consolidate [YYYY-MM]` (freeze a month), `fr manifest` (hash assignments + screenshots, then `ots stamp <file>`), `fr generate 2026-12` (a specific month).
+Other commands: `consolidate [YYYY-MM]` (freeze a month), `manifest` (hash assignments + screenshots, then `ots stamp <file>`), `generate 2026-12` (a specific month).
 
 ### Flags
 
