@@ -2,6 +2,7 @@ import { ArmBars } from '@/components/ArmBars';
 import { CumulativeChart } from '@/components/CumulativeChart';
 import { StatTile } from '@/components/StatTile';
 import { fisherOneSided } from '@/lib/stats';
+import { fmtSpan } from '@/lib/viz';
 import type { ArmDatum, SeriesDatum } from '@/lib/viz';
 
 // ILLUSTRATIVE FAKE DATA — nothing on this page is a real result.
@@ -29,10 +30,10 @@ const series: SeriesDatum[] = [
   { id: 'control', name: 'Control', colorKey: 'control', n: 60, days: [] },
 ];
 const examples = [
-  { d: 'examplealpha.com', reg: 'Registrar A', action: 'Search + cart', delay: '1d 4h', via: 'Registrar X' },
-  { d: 'examplebeta.com', reg: 'Registrar A', action: 'Search + cart', delay: '2d 19h', via: 'Registrar X' },
-  { d: 'examplegamma.net', reg: 'Registrar A', action: 'Search only', delay: '9d 2h', via: 'Registrar Y' },
-  { d: 'exampledelta.com', reg: 'Registrar C', action: 'Search + cart', delay: '41d 7h', via: 'Registrar Z' },
+  { d: 'examplealpha.com', reg: 'Registrar A', action: 'Search + cart', delay: 1.17, via: 'Registrar X' },
+  { d: 'examplebeta.com', reg: 'Registrar A', action: 'Search + cart', delay: 2.8, via: 'Registrar X' },
+  { d: 'examplegamma.net', reg: 'Registrar A', action: 'Search only', delay: 9.1, via: 'Registrar Y' },
+  { d: 'exampledelta.com', reg: 'Registrar C', action: 'Search + cart', delay: 41.3, via: 'Registrar Z' },
 ];
 
 export default function Example() {
@@ -81,10 +82,10 @@ export default function Example() {
         <div className="section__head"><h2>Registered names (example)</h2></div>
         <div className="card card--flush table-wrap">
           <table>
-            <thead><tr><th>Domain</th><th>Searched on</th><th>Action</th><th className="n">Delay</th><th>Registered via</th></tr></thead>
+            <thead><tr><th>Domain</th><th>Searched on</th><th>Action</th><th>Timespan</th><th>Registered via</th></tr></thead>
             <tbody>
               {examples.map((e) => (
-                <tr key={e.d}><td><b>{e.d}</b></td><td>{e.reg}</td><td>{e.action}</td><td className="n">{e.delay}</td><td>{e.via}</td></tr>
+                <tr key={e.d}><td><b>{e.d}</b></td><td>{e.reg}</td><td>{e.action}</td><td>registered {fmtSpan(e.delay)}</td><td>{e.via}</td></tr>
               ))}
             </tbody>
           </table>

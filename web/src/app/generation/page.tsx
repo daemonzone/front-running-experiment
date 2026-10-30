@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 export default async function Generation({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   const sp = await searchParams;
   const months = await listMonths();
-  const sel = resolveMonth(sp.month) === 'all' ? currentMonthKey() : resolveMonth(sp.month); // one cohort at a time
+  const resolved = await resolveMonth(sp.month);
+  const sel = resolved === 'all' ? currentMonthKey() : resolved; // one cohort at a time
   const date = `${sel}-01`;
 
   const [cohort] = await q(

@@ -11,7 +11,8 @@ const queries: Record<string, string> = {
   cohort_snapshots: `SELECT to_char(s.cohort, 'YYYY-MM') AS cohort, s.taken_at, s.total_names, s.total_registered, s.sha256
                        FROM cohort_snapshots s ORDER BY s.cohort`,
   domains: `SELECT d.name, to_char(d.cohort, 'YYYY-MM') AS cohort, d.assigned_action, r.slug AS registrar, d.status, d.generated_at, d.searched_at,
-                   d.registered_detected_at, d.rdap_created_at, d.rdap_registrar_name
+                   d.registered_detected_at, d.rdap_created_at, d.rdap_registrar_name,
+                   ROUND((EXTRACT(EPOCH FROM (COALESCE(d.rdap_created_at, d.registered_detected_at) - d.searched_at)) / 86400)::numeric, 2) AS registered_after_days
               FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id ORDER BY d.id`,
   search_log: `SELECT d.name, s.action, r.slug AS registrar, s.outcome, s.started_at, s.finished_at, s.site_says_available,
                       s.cart_confirmed, s.manual, s.egress_ip, s.screenshot_sha256, s.error

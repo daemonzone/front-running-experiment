@@ -48,9 +48,20 @@ export const fmtDate = (d: Date | string | null | undefined, withTime = false) =
   return withTime ? `${s.slice(0, 10)} ${s.slice(11, 16)} UTC` : s.slice(0, 10);
 };
 
-export const fmtDelay = (days: number | null | undefined) => {
-  if (days == null) return '—';
-  const d = Math.floor(days);
-  const h = Math.round((days - d) * 24);
-  return d > 0 ? `${d}d ${h}h` : `${h}h`;
-};
+/**
+ * Plain-language gap between the search and the registration: "6 hours later", "23 days later".
+ * Minutes under an hour, hours under two days, days beyond; "earlier" if the registration predates the search.
+ */
+export function fmtSpan(days: number | null | undefined): string {
+  if (days == null || Number.isNaN(Number(days))) return '—';
+  const d = Number(days);
+  const abs = Math.abs(d);
+  const minutes = Math.round(abs * 1440);
+  const hours = Math.round(abs * 24);
+  let n: number;
+  let unit: string;
+  if (minutes < 60) { n = Math.max(1, minutes); unit = 'minute'; }   // rounds at the boundary: 59.9 min -> 1 hour
+  else if (hours < 48) { n = hours; unit = 'hour'; }
+  else { n = Math.round(abs); unit = 'day'; }
+  return `${n} ${unit}${n === 1 ? '' : 's'} ${d < 0 ? 'earlier' : 'later'}`;
+}

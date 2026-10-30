@@ -17,10 +17,17 @@ export async function listMonths(): Promise<string[]> {
   return Array.from(new Set([...rows.map((r) => r.m), currentMonthKey()])).sort().reverse();
 }
 
-/** ?month=YYYY-MM | all ; defaults to the current month. */
-export function resolveMonth(param: string | undefined): string {
+/**
+ * ?month=YYYY-MM | all. Default: the current month; if it has no cohort yet (e.g. the first cohort was
+ * generated ahead of time), the most recent cohort, so the page never opens on an empty month.
+ */
+export async function resolveMonth(param: string | undefined): Promise<string> {
   if (param === 'all') return 'all';
-  return param && /^\d{4}-\d{2}$/.test(param) ? param : currentMonthKey();
+  if (param && /^\d{4}-\d{2}$/.test(param)) return param;
+  const cur = currentMonthKey();
+  const rows = await q<{ m: string }>(`SELECT to_char(month, 'YYYY-MM') AS m FROM cohorts ORDER BY month DESC`);
+  if (rows.some((r) => r.m === cur) || rows.length === 0) return cur;
+  return rows[0].m;
 }
 
 /** SQL fragment + params to scope a query on `domains d` to the selected month. */

@@ -3,7 +3,7 @@ import { StatusPill } from '@/components/Pill';
 import { MonthPicker } from '@/components/MonthPicker';
 import { q } from '@/lib/db';
 import { cohortFilter, listMonths, monthShort, resolveMonth } from '@/lib/months';
-import { actionLabel, fmtDate, type Action } from '@/lib/viz';
+import { actionLabel, fmtDate, fmtSpan, type Action } from '@/lib/viz';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ const statusLabel: Record<string, string> = {
 export default async function Domains({ searchParams }: { searchParams: Promise<{ status?: string; registrar?: string; month?: string }> }) {
   const sp = await searchParams;
   const { status, registrar } = sp;
-  const sel = sp.month ? resolveMonth(sp.month) : 'all';
+  const sel = sp.month ? await resolveMonth(sp.month) : 'all';
   const months = await listMonths();
   const registrars = await q<{ slug: string; name: string }>('SELECT slug, name FROM registrars WHERE enabled ORDER BY id');
   const cf = cohortFilter(sel);
@@ -26,7 +26,8 @@ export default async function Domains({ searchParams }: { searchParams: Promise<
   else if (registrar && registrars.some((r) => r.slug === registrar)) { params.push(registrar); where.push(`r.slug = $${params.length}`); }
 
   const rows = await q(
-    `SELECT d.name, d.status, d.assigned_action AS action, r.name AS registrar, d.searched_at, to_char(d.cohort, 'YYYY-MM') AS cohort
+    `SELECT d.name, d.status, d.assigned_action AS action, r.name AS registrar, d.searched_at, to_char(d.cohort, 'YYYY-MM') AS cohort,
+            CASE WHEN d.status = 'registered' THEN EXTRACT(EPOCH FROM (COALESCE(d.rdap_created_at, d.registered_detected_at) - d.searched_at)) / 86400 END AS days
        FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY d.generated_at DESC, d.id DESC LIMIT 1000`, params);
@@ -65,7 +66,7 @@ export default async function Domains({ searchParams }: { searchParams: Promise<
       <div className="card card--flush table-wrap">
         {rows.length === 0 ? <p className="empty">No names match these filters.</p> : (
           <table>
-            <thead><tr><th>Domain</th><th>Group</th><th>Action</th><th>Status</th><th>Searched</th><th>Cohort</th></tr></thead>
+            <thead><tr><th>Domain</th><th>Group</th><th>Action</th><th>Status</th><th>Searched</th><th>Timespan</th><th>Cohort</th></tr></thead>
             <tbody>
               {rows.map((d: any) => (
                 <tr key={d.name}>
@@ -74,6 +75,7 @@ export default async function Domains({ searchParams }: { searchParams: Promise<
                   <td>{actionLabel[d.action as Action]}</td>
                   <td><StatusPill status={d.status} /></td>
                   <td>{fmtDate(d.searched_at)}</td>
+                  <td>{d.days != null ? `registered ${fmtSpan(d.days)}` : <span className="muted">—</span>}</td>
                   <td className="muted"><Link href={`/generation?month=${d.cohort}`}>{monthShort(d.cohort)}</Link></td>
                 </tr>
               ))}

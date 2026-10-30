@@ -10,13 +10,13 @@ import { q } from '@/lib/db';
 import { fetchRdap } from '@/lib/rdap';
 import { cohortFilter, listMonths, monthLabel, resolveMonth } from '@/lib/months';
 import { fisherOneSided } from '@/lib/stats';
-import { actionLabel, fmtDate, fmtDelay, type Action, type ArmDatum, type SeriesDatum } from '@/lib/viz';
+import { actionLabel, fmtDate, fmtSpan, type Action, type ArmDatum, type SeriesDatum } from '@/lib/viz';
 import { site } from '@/lib/site';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
-  const sel = resolveMonth((await searchParams).month);
+  const sel = await resolveMonth((await searchParams).month);
   const caseRdap = await fetchRdap(kleoshq.domain);
   const months = await listMonths();
   const f = cohortFilter(sel);
@@ -164,7 +164,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
             <p className="empty">None so far. This table fills in as the registry reports registrations.</p>
           ) : (
             <table>
-              <thead><tr><th>Domain</th><th>Searched on</th><th>Action</th><th>Searched</th><th className="n">Delay</th><th>Registered via</th></tr></thead>
+              <thead><tr><th>Domain</th><th>Searched on</th><th>Action</th><th>Searched</th><th>Timespan</th><th>Registered via</th></tr></thead>
               <tbody>
                 {hits.map((h: any) => (
                   <tr key={h.name}>
@@ -172,7 +172,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
                     <td>{h.registrar ?? 'Control'}</td>
                     <td>{actionLabel[h.action as Action]}</td>
                     <td>{fmtDate(h.searched_at)}</td>
-                    <td className="n">{fmtDelay(h.days)}</td>
+                    <td>registered {fmtSpan(h.days)}</td>
                     <td>{h.rdap_registrar_name ?? '—'}</td>
                   </tr>
                 ))}

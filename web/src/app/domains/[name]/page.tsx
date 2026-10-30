@@ -4,7 +4,7 @@ import { StatusPill } from '@/components/Pill';
 import { StatTile } from '@/components/StatTile';
 import { q } from '@/lib/db';
 import { monthLabel } from '@/lib/months';
-import { actionLabel, fmtDate, fmtDelay, type Action } from '@/lib/viz';
+import { actionLabel, fmtDate, fmtSpan, type Action } from '@/lib/viz';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +39,7 @@ export default async function DomainPage({ params }: { params: Promise<{ name: s
         <StatTile label="Group" value={d.registrar ?? 'Control'} hint={actionLabel[d.assigned_action as Action]} />
         <StatTile label="Searched" value={fmtDate(d.searched_at)} hint={d.searched_at ? 'exposure start' : 'not yet'} />
         <StatTile label="Registered (RDAP)" value={d.status === 'registered' ? fmtDate(d.rdap_created_at ?? d.registered_detected_at) : '—'} hint={d.rdap_registrar_name ? `via ${d.rdap_registrar_name}` : undefined} />
-        <StatTile label="Delay" value={d.status === 'registered' ? fmtDelay(d.days) : '—'} hint="search → registration" />
+        <StatTile label="Timespan" value={d.status === 'registered' ? fmtSpan(d.days) : '—'} hint="between the search and the registration" />
       </div>
 
       <section className="section">
