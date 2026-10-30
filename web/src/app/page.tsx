@@ -1,10 +1,13 @@
 import Link from 'next/link';
 import { ArmBars } from '@/components/ArmBars';
+import { CaseStudy } from '@/components/CaseStudy';
 import { CumulativeChart } from '@/components/CumulativeChart';
 import { MonthPicker } from '@/components/MonthPicker';
 import { StatTile } from '@/components/StatTile';
 import { IconClock, IconEye, IconNames, IconShield } from '@/components/icons';
+import { kleoshq } from '@/lib/cases';
 import { q } from '@/lib/db';
+import { fetchRdap } from '@/lib/rdap';
 import { cohortFilter, listMonths, monthLabel, resolveMonth } from '@/lib/months';
 import { fisherOneSided } from '@/lib/stats';
 import { actionLabel, fmtDate, fmtDelay, type Action, type ArmDatum, type SeriesDatum } from '@/lib/viz';
@@ -14,6 +17,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   const sel = resolveMonth((await searchParams).month);
+  const caseRdap = await fetchRdap(kleoshq.domain);
   const months = await listMonths();
   const f = cohortFilter(sel);
   const scope = sel === 'all' ? 'all months' : monthLabel(sel);
@@ -107,6 +111,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
           </div>
         </aside>
       </section>
+
+      <CaseStudy domain={kleoshq.domain} searches={kleoshq.searches} rdap={caseRdap} />
 
       <MonthPicker basePath="/" months={months} selected={sel} />
 
