@@ -58,7 +58,7 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `doc
 | `words [n] [--check]` | Preview `n` generated names and the recipe of each; `--check` samples their RDAP availability. No database writes |
 | `generate [YYYY-MM]` | Generate that month's cohort (default: current): `NAMES_PER_ARM` RDAP-verified names for every group + control; every candidate is logged in `name_candidates`. Idempotent (tops up short groups) |
 | `consolidate [YYYY-MM]` | Freeze a cohort's results into an immutable snapshot (default: all finished, unconsolidated months) |
-| `search [n]` | Run up to `n` pending searches now (random 90–420 s pauses between them) |
+| `search [n] [options]` | Search up to `n` pending names (default 3) on their assigned registrar, one after the other with random 90–420 s pauses. Options: `--registrar=<slug>`, `--action=<search_only\|search_cart>`, `--domain=<name>`, `--dry-run`. See [Scanning the names](#scanning-the-names-manual-run) |
 | `monitor` | RDAP-check everything being monitored and flag newly registered names |
 | `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (only for registrars with `requires_login`) |
 | `log-manual <domain> <action> [notes]` | Record a search you did by hand when an adapter breaks. The action must match the assignment |
@@ -143,6 +143,113 @@ To change the style, edit the word lists in `words.ts` or the pattern weights in
 - Names keep being monitored for `MONITOR_DAYS` (default 90) after their search, so a month's *live* numbers can grow after its snapshot.
 - Group size: `NAMES_PER_ARM` is per **(registrar, action)** group, so 3 registrars × 2 actions + control = 35 names/month at the default.
 
+## Scanning the names (manual run)
+
+"Scanning" is two separate things, and the worker does both:
+
+| | What it does | Command | Who sees it |
+|---|---|---|---|
+| **Search** (the experiment's exposure) | opens the registrar's site in a real browser, searches the name, and for `search_cart` names also adds it to the cart. Takes a screenshot, then the name starts its 90-day monitoring window | `search` | the registrar |
+| **Monitor** (the measurement) | asks the public registry (RDAP) whether each monitored name has become registered, and flags it against the registrar it was searched on | `monitor` | nobody but the registry |
+
+Control names are never searched: they start being monitored as soon as they are generated. The other names wait in `pending_search` until a search completes.
+
+### Pre-flight checklist (once, before the first real search)
+
+A name that has been searched is **exposed for good**, so get these right first.
+
+1. **Stop the scheduler** so nothing else searches while you work: `docker compose stop worker`.
+2. **Lock the pre-registration.** The assignment list must be fixed before any exposure: run `npm run cli -- manifest`, then `ots stamp data/manifests/manifest-<timestamp>.txt` ([Evidence hygiene](#evidence-hygiene)), and keep the `.ots` file.
+3. **Know that the adapters are untested** against the live sites ([Adapters](#adapters-read-this)). The first search on each registrar is also the test of its adapter, so start with a single name and a visible browser.
+4. **See the plan without touching anything:** `npm run cli -- search 5 --dry-run`.
+
+### Syntax
+
+Run from `worker/` on your Mac (one-time setup in [Running the worker manually](#running-the-worker-manually)). The general form is:
+
+```
+npm run cli -- search [n] [--registrar=<slug>] [--action=<search_only|search_cart>] [--domain=<name>] [--dry-run] [--headed] [--fast] [-v]
+```
+
+`n` is how many names to search in this run (default 3). Names are picked at random among the pending ones that match the filters.
+
+```bash
+cd worker
+
+# What would it search? (no browser opened, nothing changes)
+npm run cli -- search 5 --dry-run
+
+# ONE search, watching the browser, with debug detail   <- start here
+npm run cli -- search 1 --headed --verbose
+
+# Test one registrar / one action at a time
+npm run cli -- search 1 --registrar=namecheap --action=search_only --headed -v
+npm run cli -- search 1 --registrar=namecheap --action=search_cart --headed -v
+
+# One specific name (it must still be pending)
+npm run cli -- search --domain=seleneova.com --headed -v
+
+# Several in a row. --fast = 3-8 s pauses (testing only); without it the pauses are 90-420 s like a person
+npm run cli -- search 3 --headed --fast
+npm run cli -- search 5 --headed
+
+# The same from Docker (headless browser, no window)
+docker compose run --rm worker npx tsx src/cli.ts search 1 -v
+```
+
+The flag-first style works for every command too (`npm run cli -- --search 1 --headed`).
+
+### What happens for each name
+
+```
+search start → step: opening search page → step: search done
+  → (search_cart only) step: adding to cart → step: cart result
+  → screenshot saved (with SHA-256) → SEARCH OK, now monitoring
+```
+
+- **`SEARCH OK`**: the exposure counted. The name moves to `monitoring`, with `searched_at` and a 90-day window.
+- **`search NOT counted: cart add unconfirmed`**: for `search_cart` names, a cart add that can't be confirmed doesn't count. The name stays pending for a retry.
+- **`search failed`**: an error (page didn't load, button not found). A diagnostic screenshot goes to `data/screenshots/errors/`, and the name stays pending for a retry.
+- **Three failed attempts** and the name is marked `failed` and stops being retried.
+- **Caveat.** If an attempt fails *after* the results page loaded, the name may already have been seen by the registrar even though the attempt didn't count. The retry then adds the cart step. Keep that in mind when you read the `search_log` and note it if it matters.
+- **If a site blocks the automation**, do that search by hand (same action as assigned) and record it: `npm run cli -- log-manual <domain> <search_only|search_cart> "searched by hand"`.
+
+### After a search: check the result
+
+```bash
+npm run cli -- runs 5          # what ran, how it ended, counters
+npm run cli -- status          # per-group state
+ls data/screenshots data/screenshots/errors
+tail -f data/logs/worker-$(date -u +%F).log
+```
+
+Or open the website: **Names** (`/domains?status=monitoring`) lists each name's status, and a name's page shows its timeline and the log of every action with the screenshot hash. In SQL:
+
+```sql
+SELECT d.name, s.action, s.outcome, s.cart_confirmed, s.started_at, s.error
+  FROM search_log s JOIN domains d ON d.id = s.domain_id ORDER BY s.id DESC LIMIT 20;
+```
+
+### The RDAP scan (monitor)
+
+```bash
+npm run cli -- monitor            # checks every name in 'monitoring' once
+npm run cli -- monitor -v         # + each registry answer
+```
+
+A registered name logs `DOMAIN REGISTERED` and is flagged against the registrar it was searched on; the registrar of record reported by RDAP is stored for information only. The scheduler runs this daily at 06:30; run it by hand whenever you want a fresh look.
+
+### Handing over to the scheduler
+
+When searches work for every registrar and action:
+
+```bash
+docker compose up -d worker
+docker compose logs -f worker
+```
+
+It then searches 3 names at 09:17, 12:17, 15:17 and 18:17 (set `CRON_SEARCH` / `SEARCHES_PER_RUN` to change that), so a cohort of 30 searchable names is exposed over about three days, and it runs the RDAP scan every morning. Don't search the whole cohort within minutes: the slow pace is deliberate, to look like a person.
+
 ## Running the worker manually
 
 The scheduler container does all of this on its own; run things by hand when you want to test, debug or force a step.
@@ -177,9 +284,9 @@ export DATA_DIR=../data
 
 Handy alias for the Docker route: `alias fr='docker compose run --rm worker npx tsx src/cli.ts'`, then `fr runs`, `fr monitor -v`, etc.
 
-### Suggested first run
+### Optional: a rehearsal on throw-away data
 
-Do the first trial on throw-away data: **a name that was searched is exposed and can't be reused as a clean experiment name**, so adapter testing burns names. Use a tiny cohort and wipe it afterwards.
+Already have a real cohort you're happy with? Skip this and use [Scanning the names](#scanning-the-names-manual-run). A rehearsal is for testing the adapters without using up real names: **a name that was searched is exposed and can't be reused as a clean experiment name**, so adapter testing burns names. Use a tiny cohort in a separate trial, and wipe everything afterwards.
 
 ```bash
 # The whole cycle in the foreground, with a visible browser (Mac route).
@@ -219,6 +326,12 @@ Other commands: `consolidate [YYYY-MM]` (freeze a month), `manifest` (hash assig
 | `--fast` | short 3–8 s pauses between searches instead of 90–420 s (manual testing only) |
 | `--force` | run even if another job is marked as running |
 | `--no-file` | don't write the log file |
+| `--dry-run` | (`search`) list the names that would be searched; no browser, nothing changes |
+| `--registrar=<slug>` | (`search`) only names assigned to that registrar: `namecheap`, `godaddy`, `ionos` |
+| `--action=<a>` | (`search`) only `search_only` or `search_cart` names |
+| `--domain=<name>` | (`search`) only that one pending name |
+| `--searches=N` | (`run`) how many searches the full cycle does |
+| `--check` | (`words`) sample RDAP availability of the previewed names |
 
 ## Logging: following what the worker does
 

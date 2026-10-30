@@ -159,8 +159,29 @@ async function pause(seconds: number, log: Logger) {
   }
 }
 
+export interface SearchOptions {
+  registrar?: string;   // only names assigned to this registrar slug
+  action?: string;      // search_only | search_cart
+  domain?: string;      // one specific name
+  dryRun?: boolean;     // list what would be searched, don't open a browser
+}
+
 /** Process up to `limit` pending domains, with long random pauses between them. */
-export async function search(limit = config.searchesPerRun, log: Logger = createLogger('search')): Promise<Record<string, unknown>> {
+export async function search(
+  limit = config.searchesPerRun,
+  log: Logger = createLogger('search'),
+  opts: SearchOptions = {},
+): Promise<Record<string, unknown>> {
+  if (opts.action && !['search_only', 'search_cart'].includes(opts.action)) {
+    throw new Error(`--action must be search_only or search_cart, got "${opts.action}"`);
+  }
+  if (opts.registrar) {
+    const [known] = await q('SELECT 1 FROM registrars WHERE slug = $1', [opts.registrar]);
+    if (!known) throw new Error(`unknown registrar "${opts.registrar}"`);
+  }
+  const filters = { registrar: opts.registrar, action: opts.action, domain: opts.domain?.toLowerCase() };
+  if (opts.registrar || opts.action || opts.domain) log.info('filters', filters);
+
   // Give up on domains that already failed 3 times, so a broken adapter doesn't loop forever.
   const gaveUp = await q(`UPDATE domains d SET status = 'failed' WHERE status = 'pending_search'
              AND (SELECT COUNT(*) FROM search_log s WHERE s.domain_id = d.id AND s.outcome = 'error') >= 3 RETURNING name`);
@@ -169,8 +190,20 @@ export async function search(limit = config.searchesPerRun, log: Logger = create
   const [{ pending }] = await q<{ pending: number }>(`SELECT COUNT(*)::int AS pending FROM domains WHERE status = 'pending_search'`);
   const rows = await q<DomainRow>(
     `SELECT d.id, d.name, d.label, d.tld, d.assigned_action, d.assigned_registrar_id
-       FROM domains d WHERE d.status = 'pending_search' ORDER BY random() LIMIT $1`, [limit]);
+       FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id
+      WHERE d.status = 'pending_search'
+        AND ($2::text IS NULL OR r.slug = $2)
+        AND ($3::text IS NULL OR d.assigned_action::text = $3)
+        AND ($4::text IS NULL OR d.name = $4)
+      ORDER BY random() LIMIT $1`,
+    [limit, filters.registrar ?? null, filters.action ?? null, filters.domain ?? null]);
   log.info('pending searches', { pending, this_run: rows.length, limit });
+
+  if (opts.dryRun) {
+    for (const d of rows) log.info('DRY RUN would search', { domain: d.name, action: d.assigned_action, registrar_id: d.assigned_registrar_id });
+    log.info('dry run: no browser opened, nothing changed');
+    return { pending, dry_run: true, would_search: rows.length };
+  }
   if (!rows.length) {
     await explainNothingToSearch(log, limit);
     return { pending, attempted: 0, ok: 0, failed: 0 };
