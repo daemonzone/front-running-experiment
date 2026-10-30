@@ -149,10 +149,10 @@ export default async function Generation({ searchParams }: { searchParams: Promi
             <div className="section__head">
               <div>
                 <h2>Every candidate tested</h2>
-                <p>
+                <p className="one-line">
                   In order of generation. {count('available')} available · {count('already_registered')} already registered ·{' '}
                   {count('duplicate_label')} duplicate words · {count('inconclusive')} inconclusive. &quot;Verify&quot; opens the registry&apos;s own
-                  RDAP answer, which reflects today&apos;s state. <b>For a name that is free the registry answers &quot;404 not found&quot;: that is the expected result</b>
+                  RDAP answer, which reflects today&apos;s state. <b>For a name that is free the registry answers &quot;404 not found&quot;: that is the expected result</b>{' '}
                   (it has no record because the name isn&apos;t registered). For a registered name it shows the record instead.
                 </p>
               </div>
