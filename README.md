@@ -127,3 +127,7 @@ Edit `web/src/lib/site.ts` (author, contact, start date, repo URL) before publis
 - **1st, 05:10** — `generate`: the new cohort. Months are UTC calendar months. The UI's month picker (default: current month, or *All time*) scopes Results, Generation and Names; the hero box always shows the all-time total.
 - Names keep being monitored for `MONITOR_DAYS` (default 90) after their search, so a month's *live* numbers can grow after its snapshot.
 - Group size: `NAMES_PER_ARM` is per **(registrar, action)** group, so 3 registrars × 2 actions + control = 35 names/month at the default.
+
+## License
+
+The code in this repository is released under the [MIT License](LICENSE).
