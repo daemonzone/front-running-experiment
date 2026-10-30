@@ -9,6 +9,7 @@ import { StatTile } from '@/components/StatTile';
 import { IconClock, IconEye, IconNames, IconShield } from '@/components/icons';
 import { kleoshq } from '@/lib/cases';
 import { q } from '@/lib/db';
+import { experimentStart } from '@/lib/experiment';
 import { fetchRdap } from '@/lib/rdap';
 import { cohortFilter, listMonths, monthLabel, resolveMonth } from '@/lib/months';
 import { fisherOneSided } from '@/lib/stats';
@@ -30,7 +31,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
             (COUNT(*) FILTER (WHERE status = 'registered'))::int AS registered,
             (COUNT(*) FILTER (WHERE status IN ('monitoring','pending_search')))::int AS active
        FROM domains`);
-  const [firstCohort] = await q<{ first: Date | null }>('SELECT MIN(month) AS first FROM cohorts');
+  const start = await experimentStart();
 
   const armRows = await q<{ slug: string | null; name: string | null; action: Action; n: number; hits: number }>(
     `SELECT r.slug, r.name, d.assigned_action AS action, COUNT(*)::int AS n,
@@ -117,7 +118,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
           <div className="hero-fig__label">Registered by someone else so far</div>
           <div className="hero-fig__value">{all.registered}</div>
           <div className="hero-fig__hint">
-            total since the beginning of the experiment{firstCohort?.first && <> ({fmtDate(firstCohort.first)})</>}
+            total since the beginning of the experiment{start && <> ({fmtDate(start)})</>}
             <br />
             out of {all.total} names · {all.active} still being watched
             {sel !== 'all' && <> · {t.registered} of them in {scope}</>}

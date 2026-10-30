@@ -1,11 +1,14 @@
 import Link from 'next/link';
+import { experimentStart } from '@/lib/experiment';
 import { site } from '@/lib/site';
+import { fmtDate } from '@/lib/viz';
 
-export default function About() {
+export default async function About() {
+  const start = await experimentStart();
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">About · started {site.startDate}</span>
+        <span className="eyebrow">About · started {start ? fmtDate(start) : site.startDate}</span>
         <h1>A test of a suspicion, not an accusation</h1>
         <p className="lede">
           Some people report that a domain name they searched for on a registrar&apos;s website was registered by someone
