@@ -12,3 +12,8 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .tag { padding: 1px 8px; border: 1px solid var(--b); border-radius: 99px; font-size: 12px; }
 a { color: inherit; }
 code { font-size: 13px; }
+nav { display: flex; gap: 16px; margin-bottom: 24px; font-size: 14px; }
+footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--b); font-size: 13px; }
+.banner { border: 2px dashed var(--hit); padding: 10px 14px; margin: 12px 0 24px; font-weight: 600; }
+.callout { border-left: 3px solid var(--b); padding: 4px 14px; margin: 16px 0; }
+p, li { max-width: 72ch; }

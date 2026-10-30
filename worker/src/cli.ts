@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { pool, q } from './db.js';
 import { generate } from './jobs/generate.js';
 import { login, logManual, search } from './jobs/search.js';
+import { manifest } from './jobs/manifest.js';
 import { monitor } from './jobs/monitor.js';
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -32,10 +33,11 @@ async function main() {
     case 'monitor': await monitor(); break;
     case 'login': await login(args[0]); break;
     case 'log-manual': await logManual(args[0], args[1], args.slice(2).join(' ') || undefined); break;
+    case 'manifest': await manifest(); break;
     case 'scheduler': await scheduler(); break;
     case 'status': console.table(await q('SELECT * FROM arm_stats')); break;
     default:
-      console.log(`usage: cli <generate [n] | search [n] | monitor | login <registrar> | log-manual <domain> <action> [notes] | status | scheduler>`);
+      console.log(`usage: cli <generate [n] | search [n] | monitor | login <registrar> | log-manual <domain> <action> [notes] | status | manifest | scheduler>`);
   }
 }
 

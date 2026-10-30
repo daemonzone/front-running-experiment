@@ -47,6 +47,7 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:5432`) or via `dock
 | `monitor` | RDAP-check everything being monitored and flag newly registered names |
 | `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (only for registrars with `requires_login`) |
 | `log-manual <domain> <action> [notes]` | Record a search you did by hand when an adapter breaks. The action must match the assignment |
+| `manifest` | Write `data/manifests/manifest-<ts>.txt`: hash of the arm assignments (the pre-registration) + SHA-256 of every screenshot. Then run `ots stamp <file>` |
 | `status` | Per-arm table |
 | `scheduler` | Long-running cron (what the container does) |
 
@@ -82,7 +83,7 @@ By default carts are left abandoned like a real visitor would (`CLEAR_CART=true`
 
 - Names are verified free *before* any exposure, and RDAP queries go to the registry (e.g. Verisign), never a registrar.
 - Publish the arm assignments before the results come in (e.g. the `domains.csv` export or a hash of it) so they can't be accused of cherry-picking.
-- Keep `data/screenshots` (hashes are in `search_log`). Consider timestamping them with OpenTimestamps.
+- Keep `data/screenshots` (hashes are in `search_log`). Run `manifest` **before the first search** and again periodically, then timestamp each file with [OpenTimestamps](https://opentimestamps.org) (`pip install opentimestamps-client; ots stamp <manifest>`) and publish the manifest + `.ots`. Anyone can later run `ots verify`.
 - Sample size matters: with a near-zero base rate, a few hits in an arm of 30–50 names is meaningful; one hit is not. Report counts and controls, and only claim what the data shows.
 - Note that the confounders are your own IP, browser extensions and DNS resolver. The `search_only` arms on *other* registrars act as the control for that.
 
@@ -99,3 +100,7 @@ What matters is that the exposure looks like what you normally do: a headed Chro
 3. **A VPS** only as a last resort; expect challenges and a different network fingerprint than your own searches.
 
 Keep the same egress IP for the whole experiment (it is logged per search), and put `web/` on Vercel with Neon if you want it public.
+
+## Site pages
+
+Edit `web/src/lib/site.ts` (author, contact, start date, repo URL) before publishing. `/about` is the intro, `/method` the pre-registered method, `/example-report` a clearly labelled fake-data report showing how results are presented (registrars anonymised as A/B/C).
