@@ -33,7 +33,7 @@ services:
       DATA_DIR: /data
       TZ: ${TZ:-Europe/Rome}
       HEADLESS: ${HEADLESS:-true}
-      CRON_SEARCH: ${CRON_SEARCH:-17 9-20/3 * * *}
+      CRON_SEARCH: ${CRON_SEARCH:-17 10 * * *}
       CRON_MONITOR: ${CRON_MONITOR:-30 6 * * *}
       CRON_CONSOLIDATE: ${CRON_CONSOLIDATE:-0 5 1 * *}
       CRON_GENERATE: ${CRON_GENERATE:-10 5 1 * *}

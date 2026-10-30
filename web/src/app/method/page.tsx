@@ -54,7 +54,7 @@ export default function Method() {
 
           <h2 id="procedure">4. Procedure</h2>
           <ul>
-            <li>A real browser, from one home internet connection for the whole experiment, a few searches per day with random pauses. No CAPTCHA solving, proxies or disguise.</li>
+            <li>A real browser, from one home internet connection for the whole experiment, one short search session a day (a few names, with random pauses). No CAPTCHA solving, proxies or disguise.</li>
             <li>Every action is logged with a timestamp, the IP address, a screenshot and its SHA-256 hash. A cart addition that can&apos;t be confirmed is not counted.</li>
             <li>Registrars&apos; terms of service are respected. If a site challenges the browser, the search is done by hand and marked as manual.</li>
           </ul>

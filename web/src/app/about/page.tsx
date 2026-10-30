@@ -24,7 +24,7 @@ export default function About() {
         <h2>What this project does</h2>
         <div className="grid-3" style={{ margin: '12px 0 8px' }}>
           <div className="card step"><span className="step__num">1</span><h3>Generates names monthly</h3><p>On the 1st: brand-like names, not registered (confirmed with the registry, not a registrar), randomly assigned to groups. Every candidate is published.</p></div>
-          <div className="card step"><span className="step__num">2</span><h3>Searches like a visitor</h3><p>A few searches a day in a real browser. Some names are also added to a cart — never bought. Controls are never searched.</p></div>
+          <div className="card step"><span className="step__num">2</span><h3>Searches like a visitor</h3><p>One short search session a day in a real browser. Some names are also added to a cart — never bought. Controls are never searched.</p></div>
           <div className="card step"><span className="step__num">3</span><h3>Publishes everything</h3><p>Daily registry checks, the raw data, the code and the method — whatever the result is.</p></div>
         </div>
 

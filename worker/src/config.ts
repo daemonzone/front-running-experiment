@@ -12,7 +12,7 @@ export const config = {
     .split(',')
     .map((p) => p.split(':'))
     .map(([tld, w]) => ({ tld: tld.trim(), weight: Number(w) })),
-  // Pacing: deliberately slow, a handful of searches per day, like a person would do.
+  // Pacing: deliberately slow: ONE search session a day with a few names, like a person would do.
   searchesPerRun: int(process.env.SEARCHES_PER_RUN, 3),
   minDelaySec: int(process.env.MIN_DELAY_SEC, 90),
   maxDelaySec: int(process.env.MAX_DELAY_SEC, 420),
@@ -20,7 +20,7 @@ export const config = {
   monitorDays: int(process.env.MONITOR_DAYS, 90),
   rdapDelayMs: int(process.env.RDAP_DELAY_MS, 1500),
   // Cron expressions (container timezone is TZ)
-  cronSearch: process.env.CRON_SEARCH ?? '17 9-20/3 * * *', // 09:17, 12:17, 15:17, 18:17
+  cronSearch: process.env.CRON_SEARCH ?? '17 10 * * *', // once a day, 10:17 (container timezone)
   cronMonitor: process.env.CRON_MONITOR ?? '30 6 * * *', // daily 06:30
   // 1st of every month: consolidate the previous month first, then generate the new cohort.
   cronConsolidate: process.env.CRON_CONSOLIDATE ?? '0 5 1 * *',

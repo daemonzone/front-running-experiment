@@ -230,7 +230,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
         <div className="section__head"><h2>How it works</h2></div>
         <div className="grid-3">
           <div className="card step"><span className="step__num">1</span><h3>Generate monthly</h3><p>On the 1st, brand-like names that the registry itself says are free — 5 per group, every candidate logged. Each is randomly assigned to a group, and the assignment is fingerprinted.</p></div>
-          <div className="card step"><span className="step__num">2</span><h3>Search</h3><p>A real browser searches a few names a day, like a person would — some also added to the cart, never purchased. Control names are never typed anywhere.</p></div>
+          <div className="card step"><span className="step__num">2</span><h3>Search</h3><p>A real browser does one short search session a day, a few names at a time, like a person would — some also added to the cart, never purchased. Control names are never typed anywhere.</p></div>
           <div className="card step"><span className="step__num">3</span><h3>Watch &amp; consolidate</h3><p>Every day the public registry (RDAP) is asked about each name. A newly registered name is flagged against the registrar it was searched on. Each month is frozen into a snapshot.</p></div>
         </div>
       </section>

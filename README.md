@@ -44,7 +44,7 @@ open http://localhost:10100
 **Validate the registrar adapters before enabling the scheduler** (see [Adapters](#adapters-read-this)), then:
 
 ```bash
-docker compose up -d worker      # cron: searches 3 names at 09:17/12:17/15:17/18:17, RDAP monitor daily 06:30, on the 1st at 05:00 consolidate last month and at 05:10 generate the new cohort (also run at startup if missed)
+docker compose up -d worker      # cron: one search session a day at 10:17 (3 names), RDAP monitor daily 06:30, on the 1st at 05:00 consolidate last month and at 05:10 generate the new cohort (also run at startup if missed)
 docker compose logs -f worker
 ```
 
@@ -93,7 +93,7 @@ The adapters in `worker/src/adapters` were written **without being run against t
 
 1. Run `search 1` with `HEADLESS=false` on the host (`cd worker && npm i && npx playwright install chromium && HEADLESS=false npm run cli -- search 1`) and watch what happens.
 2. Check `data/screenshots/` and `search_log.notes`/`cart_confirmed`. Fix the regexes/selectors in the adapter if needed.
-3. Headless Chromium in Docker is easier for sites to flag than a headed browser on your machine. If a site challenges you, do that search by hand and use `log-manual`. There is deliberately no CAPTCHA solving, fingerprint spoofing or proxy rotation here, and the pacing is slow on purpose (a few searches a day). Check each registrar's ToS.
+3. Headless Chromium in Docker is easier for sites to flag than a headed browser on your machine. If a site challenges you, do that search by hand and use `log-manual`. There is deliberately no CAPTCHA solving, fingerprint spoofing or proxy rotation here, and the pacing is slow on purpose (one short session a day). Check each registrar's ToS.
 4. Registrars with `requires_login = TRUE` reuse a session saved with `login <slug>` on the host (shared with the container through `./data`).
 
 By default carts are left abandoned like a real visitor would (`CLEAR_CART=true` empties them).
@@ -248,7 +248,7 @@ docker compose up -d worker
 docker compose logs -f worker
 ```
 
-It then searches 3 names at 09:17, 12:17, 15:17 and 18:17 (set `CRON_SEARCH` / `SEARCHES_PER_RUN` to change that), so a cohort of 30 searchable names is exposed over about three days, and it runs the RDAP scan every morning. Don't search the whole cohort within minutes: the slow pace is deliberate, to look like a person.
+It then runs **one search session a day at 10:17** (container timezone) with 3 names (`SEARCHES_PER_RUN`; change the time with `CRON_SEARCH`), so a cohort of 30 searchable names is exposed over about ten days, and it runs the RDAP scan every morning at 06:30. A bigger `SEARCHES_PER_RUN` finishes the cohort sooner; the names' 90-day windows start at their own search, so spreading the searches doesn't affect the comparison. Don't search the whole cohort within minutes: the slow pace is deliberate, to look like a person.
 
 ## Running the worker manually
 
