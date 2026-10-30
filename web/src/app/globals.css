@@ -254,7 +254,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--brand-tint) 55%, var(--
 .case { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 26px; margin-bottom: 48px; position: relative; overflow: hidden; }
 .case::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--grad); }
 .case__head h2 { margin-top: 10px; font-size: 1.6rem; }
-.badge-anecdote { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--flag); background: var(--flag-tint); padding: 3px 10px; border-radius: 99px; }
+.badge-anecdote { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--flag); background: var(--flag-tint); padding: 3px 10px; border-radius: 99px; }
 .case__flow { display: grid; grid-template-columns: 1fr minmax(110px, 160px) 1fr; gap: 12px; align-items: start; margin: 22px 0; }
 .case__col { display: flex; flex-direction: column; gap: 8px; }
 .case__when { font-size: 13px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; }

@@ -7,3 +7,4 @@ data/*
 .DS_Store
 worker/data/
 web/data/
+backups/

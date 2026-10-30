@@ -1,3 +1,4 @@
+import path from 'node:path';
 import cron from 'node-cron';
 import { config } from './config.js';
 import { pool, q } from './db.js';
@@ -7,6 +8,7 @@ import { rdapLookup, rdapPause } from './rdap.js';
 import { monthKey, monthStart, parseMonth } from './month.js';
 import { consolidate, consolidateDue } from './jobs/consolidate.js';
 import { computeFingerprint, generate } from './jobs/generate.js';
+import { importCohort } from './jobs/import.js';
 import { manifest } from './jobs/manifest.js';
 import { monitor } from './jobs/monitor.js';
 import { abortOrphanedRuns, runJob, type Trigger } from './jobs/runner.js';
@@ -17,7 +19,7 @@ import { login, logManual, parseAt, search, todo } from './jobs/search.js';
 // Options:  --verbose/-v  --quiet  --headed  --fast  --force  --no-file  --searches=N  --check
 //           --chrome (use the installed Google Chrome, headed)
 //           --registrar=<slug> --action=<search_only|search_cart> --domain=<name> --dry-run   (for search)
-const COMMANDS = ['generate', 'search', 'monitor', 'consolidate', 'manifest', 'run', 'runs', 'status', 'scheduler', 'login', 'log-manual', 'words', 'requeue', 'todo', 'fingerprint'];
+const COMMANDS = ['generate', 'search', 'monitor', 'consolidate', 'manifest', 'run', 'runs', 'status', 'scheduler', 'login', 'log-manual', 'words', 'requeue', 'todo', 'fingerprint', 'import'];
 const raw = process.argv.slice(2);
 const flags = new Set(raw.filter((a) => a.startsWith('-')));
 const positional = raw.filter((a) => !a.startsWith('-'));
@@ -195,6 +197,7 @@ async function main() {
     case 'manifest': await once('manifest', (l) => manifest(l)); break;
     case 'log-manual': await once('log-manual', (l) => logManual(args[0], args[1], args.slice(2).join(' ') || undefined, l, { at: parseAt(opt('at')), screenshot: opt('screenshot') })); break;
     case 'todo': await once('todo', (l) => todo(l, opt('registrar'))); break;
+    case 'import': await once('import', (l) => importCohort(path.resolve(args[0] ?? ''), parseMonth(args[1]), (opt('allow-registered') ?? '').split(','), l)); break;
     case 'fingerprint': await once('fingerprint', (l) => fingerprint(parseMonth(args[0]), l)); break;
     case 'requeue': await once('requeue', (l) => requeue(args[0], l)); break;
     case 'login': await login(args[0]); break;
@@ -220,6 +223,8 @@ commands:
   log-manual <domain> <action> [notes] [--at=HH:MM|ISO] [--screenshot=<file>]   record a search you did by hand
   requeue <domain>       put a failed name back in the queue (its failed attempts stop counting)
   fingerprint [YYYY-MM]  recompute and store a cohort's assignment hash from the current data
+  import <file> [YYYY-MM] [--allow-registered=a.com,b.com]   re-create a cohort from an exact list (no randomness), registry-checked,
+                         all-or-nothing; the fingerprint is computed at the end
   login <registrar>      save a browser session (run on the host)
   runs [n]               last n job runs
   status                 current state + per-group results

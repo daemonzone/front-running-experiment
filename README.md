@@ -61,6 +61,7 @@ Run from `worker/` (needs `DATABASE_URL`, default `localhost:15432`) or via `doc
 | `search [n] [options]` | Search up to `n` pending names (default 3) on their assigned registrar, one after the other with random 10–30 s pauses. Options: `--registrar=<slug>`, `--action=<search_only\|search_cart>`, `--domain=<name>`, `--dry-run`. See [Scanning the names](#scanning-the-names-manual-run) |
 | `monitor` | RDAP-check everything being monitored and flag newly registered names |
 | `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (only for registrars with `requires_login`) |
+| `import <file> [YYYY-MM] [--allow-registered=a.com,...]` | Re-create a cohort from an **exact list** (`name<TAB>action<TAB>registrar[<TAB>recipe]`, registrar `-` for the control), with no randomness. Every name is checked against the registry first; a registered name is refused unless allowed explicitly; all-or-nothing; the fingerprint is computed at the end. Used to rebuild a cohort from a backup. Top up missing names afterwards with `generate` |
 | `fingerprint [YYYY-MM]` | Recompute and store a cohort's assignment fingerprint from the data as it is now, and warn if searches have already started |
 | `requeue <domain>` | Put a `failed` (or stuck pending) name back in the queue and void its failed attempts, so `search` will try it again from attempt 1 |
 | `todo [--registrar=<slug>]` | Checklist of the names still to search by hand, what to do for each, and the `log-manual` command to record it |
@@ -487,3 +488,16 @@ Environment: `LOG_LEVEL=debug|info|warn|error` (default `info`), `LOG_FILE=false
 ## License
 
 The code in this repository is released under the [MIT License](LICENSE).
+
+## Backups
+
+`backups/` (git-ignored) holds database dumps. To take and verify one:
+
+```bash
+docker compose exec -T db pg_dump -U frontrunning -d frontrunning --no-owner > backups/<name>/frontrunning.sql
+# verify: restore into a scratch database and compare row counts
+docker compose exec -T db psql -U frontrunning -d postgres -c "CREATE DATABASE frontrunning_verify"
+docker compose exec -T db psql -U frontrunning -d frontrunning_verify < backups/<name>/frontrunning.sql
+```
+
+The pilot (October 2026 test cohort) is archived in `backups/20261030-2012-pilot/`: the dump, its assignment lists, and its screenshots and logs. The real experiment's cohort was rebuilt from that list with `import` (minus `kleoshq.com`, plus one generated name) into **November 2026**.

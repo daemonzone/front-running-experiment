@@ -19,7 +19,10 @@ export function CaseStudy({ domain, searches, rdap }: { domain: string; searches
   return (
     <section className="case section" aria-labelledby="case-title">
       <div className="case__head">
-        <span className="badge-anecdote">Case that started it</span>
+        <span className="badge-anecdote">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 21V4" /><path d="M5 4h11l-2 4 2 4H5" /></svg>
+          Case that started this experiment
+        </span>
         <h2 id="case-title"><span className="grad-text">{domain}</span>: searched, then found it already registered (not by me)</h2>
       </div>
 
