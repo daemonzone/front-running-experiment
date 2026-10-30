@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: frontrunning
+      POSTGRES_PASSWORD: frontrunning
+      POSTGRES_DB: frontrunning
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U frontrunning"]
+      interval: 5s
+      retries: 10
+
+  web:
+    build: ./web
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://frontrunning:frontrunning@db:5432/frontrunning}
+    ports: ["3000:3000"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  worker:
+    build: ./worker
+    # Chromium needs a bigger /dev/shm than Docker's 64MB default.
+    shm_size: 1gb
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://frontrunning:frontrunning@db:5432/frontrunning}
+      DATA_DIR: /data
+      TZ: ${TZ:-Europe/Rome}
+      HEADLESS: ${HEADLESS:-true}
+      CRON_SEARCH: ${CRON_SEARCH:-17 9-20/3 * * *}
+      CRON_MONITOR: ${CRON_MONITOR:-30 6 * * *}
+      CRON_GENERATE: ${CRON_GENERATE:-}
+      GENERATE_BATCH_SIZE: ${GENERATE_BATCH_SIZE:-40}
+      SEARCHES_PER_RUN: ${SEARCHES_PER_RUN:-3}
+      MIN_DELAY_SEC: ${MIN_DELAY_SEC:-90}
+      MAX_DELAY_SEC: ${MAX_DELAY_SEC:-420}
+      MONITOR_DAYS: ${MONITOR_DAYS:-90}
+      CLEAR_CART: ${CLEAR_CART:-false}
+    volumes:
+      - ./data:/data
+    depends_on:
+      db: { condition: service_healthy }
+
+volumes:
+  pgdata:

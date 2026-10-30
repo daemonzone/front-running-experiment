@@ -1,0 +1,14 @@
+:root { color-scheme: light dark; --b: #8884; --muted: #888; --hit: #c2410c; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 system-ui, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { margin: 0 0 4px; } h2 { margin-top: 36px; }
+.muted { color: var(--muted); }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--b); vertical-align: top; }
+th { font-weight: 600; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.hit { color: var(--hit); font-weight: 600; }
+.tag { padding: 1px 8px; border: 1px solid var(--b); border-radius: 99px; font-size: 12px; }
+a { color: inherit; }
+code { font-size: 13px; }

@@ -1,0 +1,91 @@
+# FrontRunning
+
+An experiment to test whether a domain registrar registers names that people merely *searched* for on its site.
+
+Randomly generated, brand-like names (`.com` mostly) that are verified unregistered via RDAP are split into arms:
+
+| Arm | What happens |
+|---|---|
+| `search_only` | Searched on one registrar (Namecheap, GoDaddy, IONOS, Cloudflare) |
+| `search_cart` | Searched **and added to the cart** (never purchased) on Namecheap, GoDaddy or IONOS |
+| `no_search` | Never typed anywhere. This is the control and gives the base rate |
+
+Assignment is random but balanced (least-filled arm first, ties broken randomly). Every day all names are checked via RDAP. A name that turns out registered is flagged with the registrar it was searched on (`domains.flagged_registrar_id`). Control names that get registered show the base rate; if it is ~0 and a given registrar's arms are not, that is the signal.
+
+```
+ ┌─────────────┐   generate/search/monitor   ┌──────────────┐   read-only   ┌───────────┐
+ │ worker      │ ───────────────────────────►│ PostgreSQL   │◄──────────────│ web       │
+ │ cron+Playwr.│                             │ (local/Neon) │               │ Next.js   │
+ └─────────────┘                             └──────────────┘               └───────────┘
+```
+
+## Quick start (local Docker)
+
+```bash
+cp .env.example .env            # optional
+docker compose up -d --build db web
+# generate the first batch (RDAP-checks every candidate, ~2s per name)
+docker compose run --rm worker npx tsx src/cli.ts generate 40
+open http://localhost:3000
+```
+
+**Validate the registrar adapters before enabling the scheduler** (see [Adapters](#adapters-read-this)), then:
+
+```bash
+docker compose up -d worker      # cron: searches 3 names at 09:17/12:17/15:17/18:17, RDAP monitor daily 06:30
+docker compose logs -f worker
+```
+
+## CLI
+
+Run from `worker/` (needs `DATABASE_URL`, default `localhost:5432`) or via `docker compose run --rm worker npx tsx src/cli.ts <cmd>`.
+
+| Command | |
+|---|---|
+| `generate [n]` | Create `n` names, RDAP-verify they're free, assign arms. Control names start monitoring immediately and get a `no_search` log row |
+| `search [n]` | Run up to `n` pending searches now (random 90–420 s pauses between them) |
+| `monitor` | RDAP-check everything being monitored and flag newly registered names |
+| `login <registrar>` | **On the host:** open a headed browser to log in and save the session to `data/state/<slug>.json` (needed for Cloudflare) |
+| `log-manual <domain> <action> [notes]` | Record a search you did by hand when an adapter breaks. The action must match the assignment |
+| `status` | Per-arm table |
+| `scheduler` | Long-running cron (what the container does) |
+
+## Database
+
+Schema: [`db/schema.sql`](db/schema.sql). Idempotent, no extensions, Neon compatible. Docker applies it on first start; for Neon: `psql "$DATABASE_URL" -f db/schema.sql` and set `DATABASE_URL` (with `?sslmode=require`) in `.env`.
+
+- `registrars`: slug, `adapter_key`, `search_url_template`, `supports_cart`, `requires_login`, `iana_id`, `enabled`
+- `domains`: every name, its assigned arm (`assigned_action`, `assigned_registrar_id`), status, registration details once flagged, `flagged_registrar_id`
+- `search_log`: one row per action taken (`search_only` / `search_cart` / `no_search`), outcome, whether the cart add was confirmed, egress IP, user agent, screenshot path + SHA-256, `manual` flag
+- `rdap_checks`: append-only RDAP observation per check, including the raw JSON
+- `arm_stats` view: per-arm counts used by the UI
+
+A `search_cart` whose cart add can't be confirmed is logged as `error` and retried (max 3 attempts), so unconfirmed attempts never count as exposures.
+
+## Adding a registrar
+
+- **Search-only, no code:** `INSERT INTO registrars (slug, name, adapter_key, search_url_template) VALUES ('porkbun','Porkbun','generic','https://porkbun.com/checkout/search?q={domain}');` The next `generate` includes it in the balancing. Check the page screenshot to make sure the URL really runs the search.
+- **Cart support or a search that needs interaction:** needs a custom adapter. Add `worker/src/adapters/<name>.ts` (copy `namecheap.ts`, which is just selectors and the cart URL), register it in `adapters/index.ts`, and use `adapter_key = '<name>'`, `supports_cart = TRUE`.
+
+## Adapters (read this)
+
+The adapters in `worker/src/adapters` were written **without being run against the live sites** (their markup changes often and may be behind bot protection). Before trusting the data:
+
+1. Run `search 1` with `HEADLESS=false` on the host (`cd worker && npm i && npx playwright install chromium && HEADLESS=false npm run cli -- search 1`) and watch what happens.
+2. Check `data/screenshots/` and `search_log.notes`/`cart_confirmed`. Fix the regexes/selectors in the adapter if needed.
+3. Headless Chromium in Docker is easier for sites to flag than a headed browser on your machine. If a site challenges you, do that search by hand and use `log-manual`. There is deliberately no CAPTCHA solving, fingerprint spoofing or proxy rotation here, and the pacing is slow on purpose (a few searches a day). Check each registrar's ToS.
+4. Cloudflare Registrar requires login and has no cart, so it only gets `search_only`. Run `login cloudflare` on the host once; the session is shared with the container through `./data`.
+
+By default carts are left abandoned like a real visitor would (`CLEAR_CART=true` empties them).
+
+## Evidence hygiene
+
+- Names are verified free *before* any exposure, and RDAP queries go to the registry (e.g. Verisign), never a registrar.
+- Publish the arm assignments before the results come in (e.g. the `domains.csv` export or a hash of it) so they can't be accused of cherry-picking.
+- Keep `data/screenshots` (hashes are in `search_log`). Consider timestamping them with OpenTimestamps.
+- Sample size matters: with a near-zero base rate, a few hits in an arm of 30–50 names is meaningful; one hit is not. Report counts and controls, and only claim what the data shows.
+- Note that the confounders are your own IP, browser extensions and DNS resolver. The `search_only` arms on *other* registrars act as the control for that.
+
+## Web UI
+
+`http://localhost:3000`: arm results, registered names with delay since search, per-domain timeline, CSV exports (`/api/export?table=domains|search_log|rdap_checks`). Read-only, no login, no write endpoints. To publish it, deploy `web/` anywhere (Vercel, etc.) with `DATABASE_URL` pointing to Neon (ideally a read-only role).
