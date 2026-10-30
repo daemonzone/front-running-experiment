@@ -17,7 +17,10 @@ export const pool =
   g.pool ??
   (g.pool = new pg.Pool({
     connectionString: databaseUrl(),
-    max: 5,
+    // Serverless: many short-lived instances, so keep each pool small and let idle connections go quickly.
+    max: process.env.VERCEL ? 3 : 5,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
     // Neon requires TLS; local docker postgres does not. Use sslmode in DATABASE_URL.
   }));
 

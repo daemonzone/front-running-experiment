@@ -517,6 +517,29 @@ npm --prefix worker run cli -- status --db=neon
 
 After the switch, the local copy is only a backup: run `monitor`, `search` and the scheduler with `--db=neon`, and keep one database as the source of truth.
 
+## Deploying the website on Vercel
+
+The site is read-only, so on Vercel it needs just one secret: a **read-only** Neon connection string.
+
+1. **Neon: a read-only role** (see the SQL below). Use the **pooled** host (the one with `-pooler`).
+2. **Vercel: import the Git repository**, and set **Root Directory = `web`**. The framework (Next.js) and the build are detected; `web/vercel.json` pins the functions to `fra1` (Frankfurt), next to the Neon database in `eu-central-1`, and `web/package.json` asks for Node 22 or newer.
+3. **Environment variable** (Production and Preview): `DATABASE_URL` = the pooled read-only string, ending in `?sslmode=verify-full`. Do **not** set `DB_TARGET` or `NEON_DATABASE_URL` there; those are for local runs.
+4. **Before it is public:** fill in `web/src/lib/site.ts` (author, contact, repository URL) and re-read the About and Method pages.
+5. **After the first deploy:** open `/`, `/generation`, `/domains`, `/api/export?table=domains`, and confirm the read-only role cannot write (`delete from domains` must fail with `permission denied`).
+
+```sql
+-- as the database owner, connected to the frontrunning database
+CREATE ROLE ro LOGIN PASSWORD '<long random password>';   -- create it with SQL, not the Neon console
+GRANT CONNECT ON DATABASE frontrunning TO ro;
+GRANT USAGE ON SCHEMA public TO ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO ro;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ro;
+```
+
+Notes: Neon scales to zero when idle, so the first request after a quiet period can take a second longer. The public CSV exports do not contain your IP address (`egress_ip` stays in the database only). The build needs no database, so deploys never depend on Neon being awake.
+
+**The worker stays on your Mac** and uses Neon by default (`DB_TARGET=neon` in the git-ignored `.env.neon`); `--db=local` switches back to the Docker database.
+
 ## Backups
 
 `backups/` (git-ignored) holds database dumps. To take and verify one:

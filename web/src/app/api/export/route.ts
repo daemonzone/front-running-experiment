@@ -15,7 +15,7 @@ const queries: Record<string, string> = {
                    ROUND((EXTRACT(EPOCH FROM (COALESCE(d.rdap_created_at, d.registered_detected_at) - d.searched_at)) / 86400)::numeric, 2) AS registered_after_days
               FROM domains d LEFT JOIN registrars r ON r.id = d.assigned_registrar_id ORDER BY d.id`,
   search_log: `SELECT d.name, s.action, r.slug AS registrar, s.outcome, s.started_at, s.finished_at, s.site_says_available,
-                      s.cart_confirmed, s.manual, s.egress_ip, s.screenshot_sha256, s.error
+                      s.cart_confirmed, s.manual, s.screenshot_sha256, s.error
                  FROM search_log s JOIN domains d ON d.id = s.domain_id LEFT JOIN registrars r ON r.id = s.registrar_id ORDER BY s.id`,
   rdap_checks: `SELECT d.name, c.checked_at, c.http_status, c.registered, c.registrar_name, c.created_at_rdap, c.error
                   FROM rdap_checks c JOIN domains d ON d.id = c.domain_id ORDER BY c.id`,
