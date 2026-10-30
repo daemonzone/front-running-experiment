@@ -75,6 +75,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
        FROM domains d LEFT JOIN registrars r ON r.id = d.flagged_registrar_id
       WHERE d.status = 'registered' AND ${f.sql} ORDER BY d.registered_detected_at DESC LIMIT 25`, f.params);
 
+  const via = await q<{ via: string | null; n: number }>(
+    `SELECT d.rdap_registrar_name AS via, COUNT(*)::int AS n
+       FROM domains d WHERE d.status = 'registered' AND ${f.sql}
+      GROUP BY d.rdap_registrar_name ORDER BY n DESC`, f.params);
+
   const history = await q(
     `SELECT to_char(c.month, 'YYYY-MM') AS month, c.consolidated_at, c.generated_at,
             COUNT(d.id)::int AS names,
@@ -175,6 +180,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
             </table>
           )}
         </div>
+        {via.length > 0 && (
+          <p className="muted via">
+            Registrar of record for these names (information only — names are attributed to where they were searched):{' '}
+            {via.map((v) => <span key={v.via ?? 'unknown'} className="chip">{v.via ?? 'unknown'} · {v.n}</span>)}
+          </p>
+        )}
       </section>
 
       <section className="section">

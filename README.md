@@ -10,7 +10,7 @@ Every month (on the 1st), randomly generated, brand-like names (`.com` mostly) t
 | `search_cart` | Searched **and added to the cart** (never purchased) on Namecheap, GoDaddy or IONOS |
 | `no_search` | Never typed anywhere. This is the control and gives the base rate |
 
-Assignment is random but balanced (least-filled arm first, ties broken randomly). Every day all names are checked via RDAP. A name that turns out registered is flagged with the registrar it was searched on (`domains.flagged_registrar_id`). Control names that get registered show the base rate; if it is ~0 and a given registrar's arms are not, that is the signal.
+Assignment is random but balanced (least-filled arm first, ties broken randomly). Every day all names are checked via RDAP. A name that turns out registered is flagged with the registrar it was searched on (`domains.flagged_registrar_id`). The registrar of record reported by RDAP is stored too (`rdap_registrar_name`, `rdap_registrar_iana_id`, plus nameservers in `rdap_checks`), but it is informational: attribution always follows where the name was searched. Control names that get registered show the base rate; if it is ~0 and a given registrar's arms are not, that is the signal.
 
 ```
  ┌─────────────┐   generate/search/monitor   ┌──────────────┐   read-only   ┌───────────┐

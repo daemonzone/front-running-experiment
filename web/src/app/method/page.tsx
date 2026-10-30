@@ -62,7 +62,8 @@ export default function Method() {
           <h2 id="measurement">5. Measurement</h2>
           <ul>
             <li>Every name is checked once a day via RDAP for {site.monitorDays} days; each check is stored with the raw response.</li>
-            <li>A name counts as registered when RDAP first returns a record. The registration date and the registrar reported by RDAP are stored.</li>
+            <li>A name counts as registered when RDAP first returns a record. The registration date, the registrar of record and the nameservers reported by RDAP are stored.</li>
+            <li><b>Attribution follows the search, not the registrar of record.</b> A registration is flagged against the registrar where the name was searched. Whoever registers a name can use any registrar, so the registrar of record is kept as information and never decides which registrar a registration is attributed to.</li>
             <li>The delay is the time between our action and the registration date reported by the registry.</li>
           </ul>
 

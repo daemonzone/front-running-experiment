@@ -273,3 +273,4 @@ tbody tr:hover td { background: color-mix(in srgb, var(--brand-tint) 55%, var(--
   .case__link { flex-direction: row; }
   .case__line--arrow::after { display: none; }
 }
+.via { margin-top: 12px; font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }

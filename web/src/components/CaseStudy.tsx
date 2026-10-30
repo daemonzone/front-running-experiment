@@ -41,7 +41,7 @@ export function CaseStudy({ domain, searches, rdap }: { domain: string; searches
           <div className="case__node case__node--hit">
             <b>Registered by someone else</b>
             <span>
-              {rdap?.registrar ? <>via <b>{rdap.registrar}</b>{rdap.registrarIana ? ` (IANA ${rdap.registrarIana})` : ''}</> : 'registrar not available'}
+              {rdap?.registrar ? <>registrar of record: <b>{rdap.registrar}</b>{rdap.registrarIana ? ` (IANA ${rdap.registrarIana})` : ''}</> : 'registrar of record not available'}
             </span>
             {rdap && rdap.nameservers.length > 0 && <span className="muted">nameservers: {rdap.nameservers.join(', ')}</span>}
             {rdap?.lastChanged && <span className="muted">record last changed {stamp(rdap.lastChanged)}</span>}
@@ -54,8 +54,8 @@ export function CaseStudy({ domain, searches, rdap }: { domain: string; searches
         <h3>What this does — and doesn&apos;t — show</h3>
         <ul>
           <li><b>It&apos;s one anecdote.</b> There is no control group here, and a name can be registered the day after a search by coincidence. That is exactly what the experiment below measures.</li>
-          <li><b>Two registrars were searched</b> (one with an added cart), so even if there were a link, this case can&apos;t say which one.</li>
-          <li><b>The registry lists {rdap?.registrar ?? 'a different registrar'} as the registrar</b>, not either of the two searched. This case alone doesn&apos;t point at who, if anyone, acted on the searches.</li>
+          <li><b>Two registrars were searched</b> (Namecheap with an added cart, IONOS search only), so this case can&apos;t separate their effects. The experiment below searches each name on one registrar only.</li>
+          <li><b>The search is what counts.</b> Names are grouped by where they were searched. The registrar of record is recorded for information only: a third party can register a name through any registrar, so it is never used to attribute a registration.</li>
           <li><b>Only the day of the searches was noted</b>, not the time, so no precise delay is claimed.</li>
         </ul>
       </div>
