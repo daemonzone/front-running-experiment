@@ -523,7 +523,7 @@ The site is read-only, so on Vercel it needs just one secret: a **read-only** Ne
 
 1. **Neon: a read-only role** (see the SQL below). Use the **pooled** host (the one with `-pooler`).
 2. **Vercel: import the Git repository**, and set **Root Directory = `web`**. The framework (Next.js) and the build are detected; `web/vercel.json` pins the functions to `fra1` (Frankfurt), next to the Neon database in `eu-central-1`, and `web/package.json` asks for Node 22 or newer.
-3. **Environment variable** (Production and Preview): `DATABASE_URL` = the pooled read-only string, ending in `?sslmode=verify-full`. Do **not** set `DB_TARGET` or `NEON_DATABASE_URL` there; those are for local runs.
+3. **Environment variable** (Production and Preview): `DATABASE_URL` = the pooled read-only string, ending in `?sslmode=verify-full`. `DB_TARGET` and `NEON_*` (from `.env.neon`) are a local switch and are **ignored on Vercel**, so only `DATABASE_URL` matters there.
 4. **Before it is public:** fill in `web/src/lib/site.ts` (author, contact, repository URL) and re-read the About and Method pages.
 5. **After the first deploy:** open `/`, `/generation`, `/domains`, `/api/export?table=domains`, and confirm the read-only role cannot write (`delete from domains` must fail with `permission denied`).
 
